@@ -75,16 +75,13 @@ export default function LoginPage() {
       return;
     }
 
-    // Cross-subdomain redirect. In local dev (.localhost) we fall back to
-    // the same origin with a slug query so the owner can open it manually.
+    // Cross-subdomain redirect. Localhost resolves wildcard via .localhost;
+    // production is always under the sajian.app apex.
     const host = window.location.host;
-    const isLocalDev = host.endsWith('.localhost') || host.includes('localhost');
-    if (isLocalDev) {
+    if (host.includes('localhost')) {
       window.location.href = `http://${ownedTenant.slug}.localhost:${window.location.port || 3000}/admin`;
     } else {
-      const apex = host.replace(/^[^.]+\./, '');
-      const baseHost = host.startsWith('www.') ? host.slice(4) : apex.includes('.') ? apex : host;
-      window.location.href = `https://${ownedTenant.slug}.${baseHost}/admin`;
+      window.location.href = `https://${ownedTenant.slug}.sajian.app/admin`;
     }
   }
 
