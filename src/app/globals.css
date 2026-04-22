@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../components/storefront/templates/tokens.css";
 
 /* Defaults for the root domain (sajian.app). Tenants override via inline style
    on <html> injected by the root layout. */
