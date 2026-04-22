@@ -25,12 +25,22 @@ function MarketingShell() {
       <BackdropDecor />
       <Header />
       <Hero />
+      <Pullquote />
       <HowItWorks />
       <Features />
       <LiveDemo />
       <ClusterTeaser />
       <SiteFooter />
     </div>
+  );
+}
+
+function Pullquote() {
+  const { t } = useLang();
+  return (
+    <Reveal as="section" className="sj-pullquote">
+      <p>{t('pullquote')}</p>
+    </Reveal>
   );
 }
 
@@ -267,7 +277,7 @@ function ClusterTeaser() {
         <div className="sj-eyebrow">{t('cluster_eyebrow')}</div>
         <h2 className="sj-h2">{t('cluster_title')}</h2>
         <p className="sj-cluster__body">{t('cluster_body')}</p>
-        <a href="https://wa.me/6281000000000" className="sj-btn sj-btn--primary">
+        <a href={`mailto:${t('footer_email')}`} className="sj-btn sj-btn--primary">
           {t('cluster_cta')}
           <Arrow />
         </a>
@@ -301,9 +311,6 @@ function SiteFooter() {
         </div>
         <div className="sj-footer__col">
           <div className="sj-eyebrow">{t('footer_contact')}</div>
-          <a href="https://wa.me/6281000000000" className="sj-footer__link">
-            {t('footer_whatsapp')}
-          </a>
           <a href={`mailto:${t('footer_email')}`} className="sj-footer__link">
             {t('footer_email')}
           </a>

@@ -23,6 +23,9 @@ export const messages = {
       'AI-powered ordering pages for Indonesian F&B. Upload your menu photos. Your customers order and pay directly. No aggregator commissions, no coding.',
     hero_proof: 'Live now at Mindiology Coffee, Bintaro — and counting.',
 
+    // Pull-quote between hero and how-it-works
+    pullquote: '0% commission. Payments go straight to your bank.',
+
     // Phone mockup labels
     mock_url: 'mindiology.sajian.app',
     mock_greeting: 'Good morning.',
@@ -31,7 +34,7 @@ export const messages = {
     mock_item_2: 'Croffle Original',
     mock_item_3: 'Cakwe Avocado',
     mock_add: 'Tambah',
-    mock_cart: '2 items · Rp 53.000',
+    mock_cart: '3 items · Rp 75.000',
 
     // How it works
     how_eyebrow: 'The workflow',
@@ -121,6 +124,8 @@ export const messages = {
       'Halaman pemesanan AI untuk F&B Indonesia. Upload foto menu kamu. Pelanggan pesan dan bayar langsung. Tanpa komisi aggregator, tanpa coding.',
     hero_proof: 'Sudah live di Mindiology Coffee, Bintaro — dan terus bertambah.',
 
+    pullquote: '0% komisi. Pembayaran langsung ke rekening kamu.',
+
     mock_url: 'mindiology.sajian.app',
     mock_greeting: 'Selamat pagi.',
     mock_branch: 'Emerald · Bintaro',
@@ -128,7 +133,7 @@ export const messages = {
     mock_item_2: 'Croffle Original',
     mock_item_3: 'Cakwe Avocado',
     mock_add: 'Tambah',
-    mock_cart: '2 item · Rp 53.000',
+    mock_cart: '3 item · Rp 75.000',
 
     how_eyebrow: 'Alurnya',
     how_title: 'Tiga langkah. Satu restoran online.',
