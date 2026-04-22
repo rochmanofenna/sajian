@@ -11,6 +11,7 @@ import { Loader2 } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
 import { createClient } from '@/lib/supabase/client';
 import { formatCurrency, formatRelativeTime } from '@/lib/utils';
+import { ShareCard } from './ShareCard';
 
 interface OrderRow {
   id: string;
@@ -122,7 +123,7 @@ export function OrderFeed({ tenant }: { tenant: PublicTenant }) {
   }
   if (error) return <div className="text-red-600 py-4">{error}</div>;
   if (orders.length === 0) {
-    return <div className="text-center py-20 text-zinc-500">Belum ada pesanan hari ini.</div>;
+    return <ShareCard tenant={tenant} />;
   }
 
   return (
