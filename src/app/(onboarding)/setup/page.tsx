@@ -7,10 +7,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles, Smartphone, Monitor } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useOnboarding } from '@/lib/onboarding/store';
 import { ChatPanel } from '@/components/onboarding/ChatPanel';
+
+type DeviceMode = 'phone' | 'desktop';
 
 export default function SetupPage() {
   const router = useRouter();
@@ -20,6 +22,7 @@ export default function SetupPage() {
   const [booting, setBooting] = useState(true);
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
+  const [deviceMode, setDeviceMode] = useState<DeviceMode>('phone');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -81,13 +84,49 @@ export default function SetupPage() {
       </section>
 
       <section className="ob-preview">
-        <div className="ob-preview__label">
-          <span className="ob-preview__label-dot" aria-hidden="true" />
-          Preview — yang akan dilihat pelanggan kamu
+        <div className="ob-preview__topbar">
+          <div className="ob-preview__label">
+            <span className="ob-preview__label-dot" aria-hidden="true" />
+            Preview — yang dilihat pelanggan
+          </div>
+          <div className="ob-device-toggle" role="tablist" aria-label="Mode preview">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={deviceMode === 'phone'}
+              data-active={deviceMode === 'phone'}
+              onClick={() => setDeviceMode('phone')}
+            >
+              <Smartphone className="h-3 w-3" aria-hidden="true" />
+              <span>Phone</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={deviceMode === 'desktop'}
+              data-active={deviceMode === 'desktop'}
+              onClick={() => setDeviceMode('desktop')}
+            >
+              <Monitor className="h-3 w-3" aria-hidden="true" />
+              <span>Desktop</span>
+            </button>
+          </div>
         </div>
 
-        <div className="ob-device">
-          <div className="ob-device__notch" aria-hidden="true" />
+        <div className={`ob-device ob-device--${deviceMode}`}>
+          {deviceMode === 'phone' && (
+            <span className="ob-device__speaker" aria-hidden="true" />
+          )}
+          {deviceMode === 'desktop' && (
+            <div className="ob-device__chrome" aria-hidden="true">
+              <span className="ob-device__dot ob-device__dot--r" />
+              <span className="ob-device__dot ob-device__dot--y" />
+              <span className="ob-device__dot ob-device__dot--g" />
+              <span className="ob-device__url">
+                {(draft.slug ?? 'nama-toko')}.sajian.app
+              </span>
+            </div>
+          )}
           {launching && (
             <div className="ob-device__launching">
               <Loader2 className="h-4 w-4 animate-spin" />
