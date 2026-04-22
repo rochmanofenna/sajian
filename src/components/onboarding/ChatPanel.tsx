@@ -79,6 +79,9 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       case 'generate_logo':
         await generateLogo();
         break;
+      case 'set_template':
+        await patchDraft({ theme_template: action.template });
+        break;
       case 'ready_to_launch':
         await pushMessage({
           role: 'assistant',
