@@ -11,8 +11,61 @@ import { Loader2, Sparkles, Smartphone, Monitor } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useOnboarding } from '@/lib/onboarding/store';
 import { ChatPanel } from '@/components/onboarding/ChatPanel';
+import type { CategoryDraft, MenuItemDraft, TenantDraft } from '@/lib/onboarding/types';
 
 type DeviceMode = 'phone' | 'desktop';
+
+// When the owner lands on /setup from /admin we want to pre-fill the draft
+// from their live tenant instead of showing an empty shell. Everything they
+// edit then either updates the live tenant (if POST /api/onboarding/launch
+// detects an existing ownership) or creates a fresh one (apex /signup path).
+async function seedDraftFromLiveTenant(userId: string): Promise<TenantDraft | null> {
+  const host = window.location.hostname;
+  const sub = host.split(':')[0].split('.')[0];
+  if (!sub || sub === 'sajian' || sub === 'www' || sub === 'localhost') return null;
+
+  const supabase = createClient();
+  const { data: tenant } = await supabase
+    .from('tenants')
+    .select(
+      'id, slug, name, tagline, colors, theme_template, logo_url, hero_image_url, operating_hours, owner_user_id',
+    )
+    .eq('slug', sub)
+    .maybeSingle();
+  if (!tenant || tenant.owner_user_id !== userId) return null;
+
+  const { data: cats } = await supabase
+    .from('menu_categories')
+    .select(
+      'name, sort_order, menu_items(name, price, description, sort_order)',
+    )
+    .eq('tenant_id', tenant.id)
+    .order('sort_order');
+
+  const menuCategories: CategoryDraft[] = (cats ?? []).map((c) => ({
+    name: c.name as string,
+    items: ((c.menu_items as MenuItemDraft[] | null) ?? [])
+      .slice()
+      .sort((a, b) => ((a as MenuItemDraft & { sort_order?: number }).sort_order ?? 0) - ((b as MenuItemDraft & { sort_order?: number }).sort_order ?? 0))
+      .map((i) => ({
+        name: i.name,
+        price: i.price,
+        description: i.description,
+      })),
+  }));
+
+  return {
+    name: tenant.name as string,
+    slug: tenant.slug as string,
+    tagline: (tenant.tagline as string | null) ?? undefined,
+    colors: (tenant.colors as TenantDraft['colors']) ?? undefined,
+    theme_template: (tenant.theme_template as TenantDraft['theme_template']) ?? undefined,
+    logo_url: (tenant.logo_url as string | null) ?? null,
+    hero_image_url: (tenant.hero_image_url as string | null) ?? null,
+    operating_hours: (tenant.operating_hours as TenantDraft['operating_hours']) ?? undefined,
+    menu_categories: menuCategories,
+  };
+}
 
 export default function SetupPage() {
   const router = useRouter();
@@ -36,6 +89,15 @@ export default function SetupPage() {
         return;
       }
       await init(user.id, user.phone ?? user.email ?? '');
+
+      // If we're on a tenant subdomain and the store has no draft data yet,
+      // seed it from the live tenant so the preview shows their actual store.
+      const current = useOnboarding.getState().draft;
+      if (!current.name) {
+        const seeded = await seedDraftFromLiveTenant(user.id);
+        if (seeded) await useOnboarding.getState().patchDraft(seeded);
+      }
+
       setBooting(false);
     })();
   }, [init, router]);

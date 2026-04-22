@@ -45,7 +45,7 @@ export function AdminTabs({ tenant, active }: { tenant: PublicTenant; active: Ad
     <div className="flex flex-col gap-4 md:gap-6 mb-6">
       <div className="flex items-center gap-3 flex-wrap">
         <a
-          href="https://sajian.app/setup"
+          href="/setup"
           className="inline-flex items-center gap-2 text-xs h-8 px-3 rounded-full text-white transition hover:opacity-90"
           style={{ background: primary }}
           title="Bikin ulang menu, warna, logo, layout dari AI"
