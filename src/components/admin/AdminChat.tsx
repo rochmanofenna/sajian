@@ -36,7 +36,15 @@ const STARTER = {
     'Halo! Gue siap bantu kelola toko kamu. Bilang aja apa yang mau diubah — menu, harga, warna, jam buka, layout.\n\nContoh: "Nasi goreng habis hari ini", "Naikin harga kopi susu jadi 30rb", "Ganti layout kayak warteg".',
 };
 
-export function AdminChat({ tenant }: { tenant: PublicTenant }) {
+export function AdminChat({
+  tenant,
+  onAfterMutate,
+  fill = false,
+}: {
+  tenant: PublicTenant;
+  onAfterMutate?: () => void;
+  fill?: boolean;
+}) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([
     { id: 'starter', ...STARTER, kind: 'text' },
@@ -131,6 +139,7 @@ export function AdminChat({ tenant }: { tenant: PublicTenant }) {
             },
           ]);
           router.refresh();
+          onAfterMutate?.();
         } else {
           setMessages((cur) => [
             ...cur,
@@ -163,9 +172,13 @@ export function AdminChat({ tenant }: { tenant: PublicTenant }) {
   }
 
   const primary = tenant.colors.primary;
+  const containerClass = fill
+    ? 'flex flex-col rounded-2xl border border-zinc-200 bg-white overflow-hidden h-full min-h-0'
+    : 'max-w-3xl flex flex-col rounded-2xl border border-zinc-200 bg-white overflow-hidden';
+  const containerStyle = fill ? undefined : { height: '68vh', minHeight: 480 };
 
   return (
-    <div className="max-w-3xl flex flex-col rounded-2xl border border-zinc-200 bg-white overflow-hidden" style={{ height: '68vh', minHeight: 480 }}>
+    <div className={containerClass} style={containerStyle}>
       <div
         className="flex items-center gap-2 px-4 py-3 border-b text-xs"
         style={{ borderColor: `${primary}18`, color: primary }}

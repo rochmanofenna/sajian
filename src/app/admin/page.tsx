@@ -10,7 +10,7 @@ import { AdminTabs, type AdminTab } from '@/components/admin/AdminTabs';
 import { OrderFeed } from '@/components/admin/OrderFeed';
 import { MenuEditor } from '@/components/admin/MenuEditor';
 import { TokoSettings } from '@/components/admin/TokoSettings';
-import { AdminChat } from '@/components/admin/AdminChat';
+import { AdminAIWorkspace } from '@/components/admin/AdminAIWorkspace';
 
 function resolveTab(raw: string | string[] | undefined): AdminTab {
   const v = Array.isArray(raw) ? raw[0] : raw;
@@ -45,7 +45,7 @@ export default async function AdminDashboardPage({
       {tab === 'orders' && <OrderFeed tenant={tenant} />}
       {tab === 'menu' && <MenuEditor tenant={tenant} />}
       {tab === 'store' && <TokoSettings tenant={tenant} />}
-      {tab === 'ai' && <AdminChat tenant={tenant} />}
+      {tab === 'ai' && <AdminAIWorkspace tenant={tenant} />}
     </>
   );
 }
