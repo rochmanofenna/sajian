@@ -3,10 +3,10 @@
 // mindiology.sajian.app/admin can see Mindiology's orders. Phase 2 adds
 // Supabase Auth with owner_phone gating.
 
-import { getTenant } from '@/lib/tenant';
+import { getPublicTenant } from '@/lib/tenant';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const tenant = await getTenant();
+  const tenant = await getPublicTenant();
 
   if (!tenant) {
     return (

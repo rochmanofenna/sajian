@@ -8,7 +8,7 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
-import { getTenant } from '@/lib/tenant';
+import { getTenant, toPublicTenant } from '@/lib/tenant';
 import { TenantProvider } from '@/context/TenantContext';
 
 const jakarta = Plus_Jakarta_Sans({
@@ -47,7 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={tenant?.locale ?? 'id-ID'} className={`${jakarta.variable} h-full antialiased`} style={themeStyle}>
       <body className="min-h-full flex flex-col bg-[var(--color-background)] text-[var(--color-dark)] font-sans">
-        {tenant ? <TenantProvider tenant={tenant}>{children}</TenantProvider> : children}
+        {tenant ? <TenantProvider tenant={toPublicTenant(tenant)}>{children}</TenantProvider> : children}
       </body>
     </html>
   );

@@ -1,10 +1,10 @@
 // Sticky top nav for tenant storefront. Tenant name + cart button.
 
 import Link from 'next/link';
-import type { Tenant } from '@/lib/tenant';
+import type { PublicTenant } from '@/lib/tenant';
 import { CartButton } from './CartButton';
 
-export function StoreHeader({ tenant }: { tenant: Tenant }) {
+export function StoreHeader({ tenant }: { tenant: PublicTenant }) {
   return (
     <header
       className="sticky top-0 z-20 border-b backdrop-blur bg-white/80"

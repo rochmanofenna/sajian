@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ShoppingBag } from 'lucide-react';
 import { useCart } from '@/lib/cart/store';
-import type { Tenant } from '@/lib/tenant';
+import type { PublicTenant } from '@/lib/tenant';
 
-export function CartButton({ tenant }: { tenant: Tenant }) {
+export function CartButton({ tenant }: { tenant: PublicTenant }) {
   // Zustand's persist middleware hydrates from localStorage on the client only,
   // so the server always renders count=0. Gate the badge behind a mount flag to
   // avoid the SSR/CSR mismatch.

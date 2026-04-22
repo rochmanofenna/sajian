@@ -4,10 +4,10 @@
 // BranchPicker (client).
 
 import Link from 'next/link';
-import type { Tenant } from '@/lib/tenant';
+import type { PublicTenant } from '@/lib/tenant';
 import { BranchPicker } from './BranchPicker';
 
-export function StorefrontHome({ tenant }: { tenant: Tenant }) {
+export function StorefrontHome({ tenant }: { tenant: PublicTenant }) {
   return (
     <main className="flex-1 flex flex-col">
       <section

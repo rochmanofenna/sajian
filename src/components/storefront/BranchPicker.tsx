@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { MapPin, Loader2 } from 'lucide-react';
-import type { Tenant } from '@/lib/tenant';
+import type { PublicTenant } from '@/lib/tenant';
 import { useCart } from '@/lib/cart/store';
 
 interface BranchOption {
@@ -18,7 +18,7 @@ interface BranchOption {
   supportsTakeaway?: boolean;
 }
 
-export function BranchPicker({ tenant }: { tenant: Tenant }) {
+export function BranchPicker({ tenant }: { tenant: PublicTenant }) {
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const { branchCode, setBranch } = useCart();

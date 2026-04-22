@@ -2,11 +2,11 @@
 // renders on a tenant subdomain. Falls back to a 404-ish page for root domain
 // hits (e.g. sajian.app/menu → prompt to visit a tenant subdomain).
 
-import { getTenant } from '@/lib/tenant';
+import { getPublicTenant } from '@/lib/tenant';
 import { StoreHeader } from '@/components/storefront/StoreHeader';
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {
-  const tenant = await getTenant();
+  const tenant = await getPublicTenant();
 
   if (!tenant) {
     return (

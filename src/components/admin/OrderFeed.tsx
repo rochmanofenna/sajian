@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Loader2 } from 'lucide-react';
-import type { Tenant } from '@/lib/tenant';
+import type { PublicTenant } from '@/lib/tenant';
 import { createClient } from '@/lib/supabase/client';
 import { formatCurrency, formatRelativeTime } from '@/lib/utils';
 
@@ -31,7 +31,7 @@ interface OrderRow {
 const STATUS_ORDER = ['new', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'] as const;
 type OrderStatus = typeof STATUS_ORDER[number];
 
-export function OrderFeed({ tenant }: { tenant: Tenant }) {
+export function OrderFeed({ tenant }: { tenant: PublicTenant }) {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

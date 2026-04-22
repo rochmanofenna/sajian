@@ -3,11 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import type { Tenant } from '@/lib/tenant';
+import type { PublicTenant } from '@/lib/tenant';
 import { useCart } from '@/lib/cart/store';
 import { formatCurrency } from '@/lib/utils';
 
-export function CheckoutView({ tenant }: { tenant: Tenant }) {
+export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
   const router = useRouter();
   const {
     items,

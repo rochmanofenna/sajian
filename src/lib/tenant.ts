@@ -73,6 +73,38 @@ export interface Tenant {
   updated_at: string;
 }
 
+// Strictly the fields safe to ship to the browser. Anything that touches
+// auth/PII (pos_config, contact_email, owner_*) stays server-side only.
+export type PublicTenant = Omit<
+  Tenant,
+  'pos_config' | 'contact_email' | 'owner_phone' | 'owner_name'
+>;
+
+export function toPublicTenant(t: Tenant): PublicTenant {
+  return {
+    id: t.id,
+    slug: t.slug,
+    name: t.name,
+    tagline: t.tagline,
+    logo_url: t.logo_url,
+    colors: t.colors,
+    support_whatsapp: t.support_whatsapp,
+    country_code: t.country_code,
+    currency_symbol: t.currency_symbol,
+    locale: t.locale,
+    fallback_coords: t.fallback_coords,
+    features: t.features,
+    tiers: t.tiers,
+    rewards: t.rewards,
+    pos_provider: t.pos_provider,
+    operating_hours: t.operating_hours,
+    subscription_tier: t.subscription_tier,
+    is_active: t.is_active,
+    created_at: t.created_at,
+    updated_at: t.updated_at,
+  };
+}
+
 // Hostnames that should never resolve to a tenant.
 const ROOT_HOSTS = new Set(['sajian.app', 'www.sajian.app', 'localhost', 'localhost:3000']);
 
@@ -128,4 +160,18 @@ export async function requireTenant(): Promise<Tenant> {
     throw new Error('NO_TENANT');
   }
   return t;
+}
+
+// Page-level fetchers. These return PublicTenant so the object is safe to
+// pass directly as a prop to a Client Component (which serializes into the
+// RSC payload). Never use the full `getTenant()` / `requireTenant()` inside
+// a page that hands the tenant to a "use client" boundary — pos_config would
+// leak.
+export async function getPublicTenant(): Promise<PublicTenant | null> {
+  const t = await getTenant();
+  return t ? toPublicTenant(t) : null;
+}
+
+export async function requirePublicTenant(): Promise<PublicTenant> {
+  return toPublicTenant(await requireTenant());
 }

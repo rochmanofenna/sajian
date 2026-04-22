@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Loader2 } from 'lucide-react';
-import type { Tenant } from '@/lib/tenant';
+import type { PublicTenant } from '@/lib/tenant';
 import { formatCurrency } from '@/lib/utils';
 
 interface OrderRow {
@@ -23,7 +23,7 @@ interface OrderRow {
   created_at: string;
 }
 
-export function TrackView({ tenant, orderId }: { tenant: Tenant; orderId: string }) {
+export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: string }) {
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [qrSvg, setQrSvg] = useState<string | null>(null);

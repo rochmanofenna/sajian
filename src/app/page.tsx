@@ -3,12 +3,12 @@
 //   • Root (sajian.app/) → marketing landing
 // All other tenant routes live under (storefront)/.
 
-import { getTenant } from '@/lib/tenant';
+import { getPublicTenant } from '@/lib/tenant';
 import { StorefrontHome } from '@/components/storefront/StorefrontHome';
 import { MarketingHome } from '@/components/marketing/MarketingHome';
 
 export default async function Home() {
-  const tenant = await getTenant();
+  const tenant = await getPublicTenant();
   if (tenant) return <StorefrontHome tenant={tenant} />;
   return <MarketingHome />;
 }

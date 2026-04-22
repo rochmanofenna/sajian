@@ -2,11 +2,11 @@
 
 import Link from 'next/link';
 import { Minus, Plus, Trash2 } from 'lucide-react';
-import type { Tenant } from '@/lib/tenant';
+import type { PublicTenant } from '@/lib/tenant';
 import { useCart } from '@/lib/cart/store';
 import { formatCurrency } from '@/lib/utils';
 
-export function CartView({ tenant }: { tenant: Tenant }) {
+export function CartView({ tenant }: { tenant: PublicTenant }) {
   const items = useCart((s) => s.items);
   const subtotal = useCart((s) => s.getSubtotal());
   const updateQuantity = useCart((s) => s.updateQuantity);

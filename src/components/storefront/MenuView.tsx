@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus } from 'lucide-react';
-import type { Tenant } from '@/lib/tenant';
+import type { PublicTenant } from '@/lib/tenant';
 import type { OrderType } from '@/lib/cart/store';
 import { useCart } from '@/lib/cart/store';
 import { formatCurrency } from '@/lib/utils';
@@ -39,7 +39,7 @@ function itemImage(item: ESBMenuItem): string | undefined {
   return item.imageOptimUrl ?? item.imageUrl ?? item.imageThumbnailUrl;
 }
 
-export function MenuView({ tenant }: { tenant: Tenant }) {
+export function MenuView({ tenant }: { tenant: PublicTenant }) {
   const branchCode = useCart((s) => s.branchCode);
   const orderType = useCart((s) => s.orderType);
   const setOrderType = useCart((s) => s.setOrderType);
@@ -190,7 +190,7 @@ function MenuRow({
   item,
   onAdd,
 }: {
-  tenant: Tenant;
+  tenant: PublicTenant;
   item: ESBMenuItem;
   onAdd: () => void;
 }) {
