@@ -161,6 +161,14 @@ body {
   gap: 14px;
 }
 
+.sj-nav-link {
+  font-size: 13px;
+  color: var(--ink-soft);
+  padding: 6px 2px;
+  transition: color 180ms ease;
+}
+.sj-nav-link:hover { color: var(--ochre); }
+
 .sj-lang {
   display: inline-flex;
   align-items: center;

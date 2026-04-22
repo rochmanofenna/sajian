@@ -8,6 +8,7 @@ export const messages = {
     nav_how: 'How it works',
     nav_features: 'Features',
     nav_demo: 'See it live',
+    nav_login: 'Log in',
 
     // CTAs
     cta_primary: 'Create your store',
@@ -111,6 +112,7 @@ export const messages = {
     nav_how: 'Cara kerja',
     nav_features: 'Fitur',
     nav_demo: 'Lihat langsung',
+    nav_login: 'Masuk',
 
     cta_primary: 'Buat toko kamu',
     cta_secondary: 'Lihat toko live',

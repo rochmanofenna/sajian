@@ -74,6 +74,9 @@ function Header() {
 
         <div className="sj-header__side">
           <LanguageToggle />
+          <Link href="/login" className="sj-nav-link">
+            {t('nav_login')}
+          </Link>
           <Link href="/signup" className="sj-btn sj-btn--primary sj-btn--sm">
             {t('cta_primary')}
             <Arrow />
