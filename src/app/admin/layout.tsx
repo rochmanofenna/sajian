@@ -1,7 +1,7 @@
-// Admin (merchant) dashboard layout. Requires a tenant — same subdomain scope
-// as the storefront. Phase 1 has no auth wall; anyone on
-// mindiology.sajian.app/admin can see Mindiology's orders. Phase 2 adds
-// Supabase Auth with owner_phone gating.
+// Admin dashboard layout. Wraps every owner route in a shell with the
+// tenant's brand strip. Auth + owner gating happens in the page component
+// because layout rendering runs before the page-level redirect chain and
+// we want to share the shell with the login screen.
 
 import { getPublicTenant } from '@/lib/tenant';
 
@@ -35,11 +35,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               style={{ background: tenant.colors.primary }}
             />
             <span className="font-semibold">{tenant.name}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">
-              Admin
-            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">Dashboard</span>
           </div>
-          <span className="text-xs text-zinc-500">{tenant.subscription_tier}</span>
+          <span className="text-xs text-zinc-500 capitalize">{tenant.subscription_tier}</span>
         </div>
       </header>
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-6">{children}</main>
