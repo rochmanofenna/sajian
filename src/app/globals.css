@@ -58,7 +58,7 @@ body {
   overflow-x: clip;
 }
 
-.sj-marketing a { color: inherit; text-decoration: none; }
+.sj-marketing a { text-decoration: none; }
 .sj-marketing button { font-family: inherit; }
 
 /* ── Backdrop decoration ─────────────────────────────────────────────── */
@@ -189,7 +189,9 @@ body {
 
 /* ── Buttons ─────────────────────────────────────────────────────────── */
 
-.sj-btn {
+/* Button styles — written at 0,1,1 specificity so inherited link colour
+   from Tailwind preflight (a { color: inherit }) can't win. */
+.sj-marketing .sj-btn {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -201,22 +203,23 @@ body {
   letter-spacing: -0.005em;
   transition: transform 180ms ease, background 180ms ease, color 180ms ease, border-color 180ms ease;
   border: 1px solid transparent;
+  cursor: pointer;
 }
-.sj-btn--sm { height: 38px; padding: 0 14px; font-size: 13px; }
-.sj-btn--primary {
+.sj-marketing .sj-btn--sm { height: 38px; padding: 0 14px; font-size: 13px; }
+.sj-marketing .sj-btn--primary {
   background: var(--ink);
   color: var(--paper);
 }
-.sj-btn--primary:hover {
+.sj-marketing .sj-btn--primary:hover {
   background: var(--forest);
   transform: translateY(-1px);
 }
-.sj-btn--ghost {
+.sj-marketing .sj-btn--ghost {
   background: transparent;
   color: var(--ink);
   border-color: rgba(10, 11, 10, 0.2);
 }
-.sj-btn--ghost:hover {
+.sj-marketing .sj-btn--ghost:hover {
   border-color: var(--ink);
   background: rgba(10, 11, 10, 0.04);
 }
