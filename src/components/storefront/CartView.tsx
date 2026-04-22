@@ -80,21 +80,21 @@ export function CartView({ tenant }: { tenant: PublicTenant }) {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => updateQuantity(item.lineId, item.quantity - 1)}
-                  className="h-8 w-8 rounded-full bg-zinc-100 flex items-center justify-center"
+                  className="h-11 w-11 rounded-full bg-zinc-100 flex items-center justify-center active:scale-95 transition-transform"
                 >
                   <Minus className="h-3.5 w-3.5" />
                 </button>
                 <span className="w-6 text-center font-medium">{item.quantity}</span>
                 <button
                   onClick={() => updateQuantity(item.lineId, item.quantity + 1)}
-                  className="h-8 w-8 rounded-full bg-zinc-100 flex items-center justify-center"
+                  className="h-11 w-11 rounded-full bg-zinc-100 flex items-center justify-center active:scale-95 transition-transform"
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </button>
               </div>
               <button
                 onClick={() => removeItem(item.lineId)}
-                className="h-8 w-8 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50"
+                className="h-11 w-11 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 active:scale-95 transition-transform"
               >
                 <Trash2 className="h-4 w-4" />
               </button>

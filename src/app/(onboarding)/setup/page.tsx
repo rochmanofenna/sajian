@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Sparkles, Smartphone, Monitor } from 'lucide-react';
+import { Loader2, Sparkles, Smartphone, Monitor, MessageCircle, Eye } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useOnboarding } from '@/lib/onboarding/store';
 import { ChatPanel } from '@/components/onboarding/ChatPanel';
@@ -76,6 +76,7 @@ export default function SetupPage() {
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [deviceMode, setDeviceMode] = useState<DeviceMode>('phone');
+  const [mobilePane, setMobilePane] = useState<'chat' | 'preview'>('chat');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -135,7 +136,26 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="ob-grid">
+    <div className="ob-grid" data-pane={mobilePane}>
+      <nav className="ob-pane-toggle" aria-label="Tampilan">
+        <button
+          type="button"
+          data-active={mobilePane === 'chat'}
+          onClick={() => setMobilePane('chat')}
+        >
+          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>Chat</span>
+        </button>
+        <button
+          type="button"
+          data-active={mobilePane === 'preview'}
+          onClick={() => setMobilePane('preview')}
+        >
+          <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>Preview</span>
+        </button>
+      </nav>
+
       <section className="ob-chat">
         <div className="ob-chat__head">
           <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />

@@ -283,16 +283,18 @@ html[data-template='classic'] {
   color: rgba(0,0,0,0.4);
 }
 .tk-kedai-menu__add {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   display: grid;
   place-items: center;
   border: none;
   cursor: pointer;
-  transition: transform 160ms ease;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+  box-shadow: 0 6px 14px -8px rgba(0,0,0,0.3);
 }
 .tk-kedai-menu__add:hover { transform: scale(1.06); }
+.tk-kedai-menu__add:active { transform: scale(0.94); }
 .tk-kedai-menu__add:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -883,17 +885,20 @@ html[data-template='classic'] {
 }
 .tk-fh-menu__add {
   position: absolute;
-  bottom: 6px;
-  right: 6px;
-  width: 28px;
-  height: 28px;
+  bottom: 8px;
+  right: 8px;
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   border: none;
   display: grid;
   place-items: center;
   cursor: pointer;
-  box-shadow: 0 2px 8px -2px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 14px -4px rgba(0,0,0,0.4);
+  transition: transform 160ms ease;
 }
+.tk-fh-menu__add:hover { transform: scale(1.06); }
+.tk-fh-menu__add:active { transform: scale(0.94); }
 .tk-fh-menu__add:disabled { opacity: 0.5; cursor: not-allowed; }
 .tk-fh-menu__card-body { padding: 8px 10px 10px; }
 .tk-fh-menu__name {
