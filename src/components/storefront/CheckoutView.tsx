@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
 import { useCart } from '@/lib/cart/store';
 import { formatCurrency } from '@/lib/utils';
+import { PageNav } from '@/components/chrome/PageNav';
 
 export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
   const router = useRouter();
@@ -67,8 +68,16 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
   };
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Pembayaran</h1>
+    <>
+      <PageNav
+        label="Checkout"
+        backHref="/cart"
+        caption={formatCurrency(subtotal, tenant.currency_symbol, tenant.locale)}
+      />
+      <div className="max-w-xl mx-auto px-4 py-6 space-y-4">
+        <h1 className="text-3xl font-semibold" style={{ fontFamily: 'var(--font-display, serif)' }}>
+          Pembayaran
+        </h1>
 
       <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${tenant.colors.primary}15` }}>
         <Label text="Nama" />
@@ -148,7 +157,8 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
         {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
         {submitting ? 'Memproses…' : 'Pesan Sekarang'}
       </button>
-    </div>
+      </div>
+    </>
   );
 }
 

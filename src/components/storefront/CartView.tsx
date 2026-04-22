@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Minus, Plus, Trash2 } from 'lucide-react';
+import { Minus, Plus, Trash2, Plus as PlusIcon } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
 import { useCart } from '@/lib/cart/store';
 import { formatCurrency } from '@/lib/utils';
+import { PageNav } from '@/components/chrome/PageNav';
 
 export function CartView({ tenant }: { tenant: PublicTenant }) {
   const items = useCart((s) => s.items);
@@ -13,25 +14,51 @@ export function CartView({ tenant }: { tenant: PublicTenant }) {
   const removeItem = useCart((s) => s.removeItem);
   const branchCode = useCart((s) => s.branchCode);
 
+  const addMoreChip = (
+    <Link
+      href="/menu"
+      className="pn-chip"
+      style={{ background: 'transparent', color: 'var(--color-dark, #0A0B0A)', border: '1px dotted color-mix(in oklab, var(--color-dark, #0A0B0A) 28%, transparent)', boxShadow: 'none' }}
+    >
+      <PlusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+      <span>Tambah menu</span>
+    </Link>
+  );
+
   if (items.length === 0) {
     return (
-      <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-3">
-        <h1 className="text-xl font-semibold">Cart kosong</h1>
-        <p className="text-zinc-600">Yuk pilih menu dulu.</p>
-        <Link
-          href="/menu"
-          className="inline-flex h-11 items-center px-5 rounded-full text-white font-medium"
-          style={{ background: tenant.colors.primary }}
-        >
-          Ke menu
-        </Link>
-      </div>
+      <>
+        <PageNav label="Keranjang" backHref="/menu" caption="belum ada pesanan" />
+        <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
+          <div className="text-5xl">🧺</div>
+          <h1 className="text-2xl font-semibold" style={{ fontFamily: 'var(--font-display, serif)' }}>
+            Keranjang masih kosong
+          </h1>
+          <p className="text-zinc-600">Pilih menu favorit kamu dulu, aku tungguin di sini.</p>
+          <Link
+            href="/menu"
+            className="inline-flex h-11 items-center px-6 rounded-full text-white font-medium"
+            style={{ background: tenant.colors.primary }}
+          >
+            Ke menu
+          </Link>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-semibold mb-4">Cart</h1>
+    <>
+      <PageNav
+        label="Keranjang"
+        backHref="/menu"
+        caption={`${items.reduce((n, i) => n + i.quantity, 0)} item`}
+        trailing={addMoreChip}
+      />
+      <div className="max-w-xl mx-auto px-4 py-6">
+        <h1 className="text-2xl font-semibold mb-4" style={{ fontFamily: 'var(--font-display, serif)' }}>
+          Pesanan kamu
+        </h1>
 
       <div className="space-y-3">
         {items.map((item) => {
@@ -94,6 +121,7 @@ export function CartView({ tenant }: { tenant: PublicTenant }) {
       {!branchCode && (
         <p className="mt-2 text-xs text-center text-zinc-500">Pilih cabang dulu dari halaman utama.</p>
       )}
-    </div>
+      </div>
+    </>
   );
 }

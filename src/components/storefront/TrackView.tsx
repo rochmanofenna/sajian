@@ -5,10 +5,12 @@
 // payment instructions + polls status.
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import QRCode from 'qrcode';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Home, Utensils } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
 import { formatCurrency } from '@/lib/utils';
+import { PageNav } from '@/components/chrome/PageNav';
 
 interface OrderRow {
   id: string;
@@ -57,18 +59,30 @@ export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: 
       .catch(() => setQrSvg(null));
   }, [order?.payment_qr_string]);
 
-  if (error) return <div className="max-w-md mx-auto py-16 px-4 text-red-600 text-center">{error}</div>;
+  if (error) {
+    return (
+      <>
+        <PageNav label="Pesanan" backHref="/" />
+        <div className="max-w-md mx-auto py-16 px-4 text-red-600 text-center">{error}</div>
+      </>
+    );
+  }
   if (!order) {
     return (
-      <div className="max-w-md mx-auto py-16 px-4 flex items-center justify-center text-zinc-500 gap-2">
-        <Loader2 className="h-4 w-4 animate-spin" /> Memuat pesanan…
-      </div>
+      <>
+        <PageNav label="Pesanan" backHref="/" caption="memuat…" />
+        <div className="max-w-md mx-auto py-16 px-4 flex items-center justify-center text-zinc-500 gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" /> Memuat pesanan…
+        </div>
+      </>
     );
   }
 
   const isCashier = order.payment_method === 'cashier';
 
   return (
+    <>
+    <PageNav label={`Pesanan · #${order.order_number}`} backHref="/" caption={order.branch_name} />
     <div className="max-w-md mx-auto px-4 py-6 space-y-4">
       <div className="text-center">
         <h1 className="text-2xl font-semibold" style={{ color: tenant.colors.primary }}>
@@ -120,6 +134,24 @@ export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: 
       <div className="text-center text-xs text-zinc-500">
         Status: <span className="font-medium text-zinc-700">{order.status}</span> · Pembayaran: <span className="font-medium text-zinc-700">{order.payment_status}</span>
       </div>
+
+      <div className="pt-2 flex items-center justify-center gap-2">
+        <Link
+          href="/menu"
+          className="inline-flex items-center gap-2 h-10 px-4 rounded-full border border-zinc-200 bg-white text-sm hover:border-zinc-400"
+        >
+          <Utensils className="h-3.5 w-3.5" />
+          Pesan lagi
+        </Link>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 h-10 px-4 rounded-full border border-zinc-200 bg-white text-sm hover:border-zinc-400"
+        >
+          <Home className="h-3.5 w-3.5" />
+          Kembali ke beranda
+        </Link>
+      </div>
     </div>
+    </>
   );
 }

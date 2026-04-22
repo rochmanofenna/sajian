@@ -1,24 +1,81 @@
-// sajian.app/login — owner re-entry. Phone/email OTP. On success we look up
-// the tenant this user owns and redirect to [slug].sajian.app/admin.
-// Uses email OTP to match the existing /signup flow; when Supabase Phone
-// auth is enabled the inputs swap without touching this file's logic.
+// sajian.app/login — owner re-entry. Email OTP, session-skip, tenant-aware
+// redirect. Matches the editorial warmth of /signup and /setup so the owner
+// never feels like they fell out of the Sajian world.
 
 'use client';
 
-import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Loader2, Mail, KeyRound } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { PageNav } from '@/components/chrome/PageNav';
 
-type Stage = 'email' | 'otp' | 'redirecting';
+type Stage = 'checking' | 'email' | 'otp' | 'redirecting';
 
 export default function LoginPage() {
   const supabase = createClient();
-  const [stage, setStage] = useState<Stage>('email');
+  const [stage, setStage] = useState<Stage>('checking');
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+
+  // Session-skip: if the user already has a Supabase session, jump straight
+  // to their admin. On a tenant subdomain we verify ownership of that tenant
+  // specifically; on apex we find whatever active tenant they own.
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setStage('email');
+        return;
+      }
+      setHint('Sudah masuk — membuka dashboard…');
+      setStage('redirecting');
+      await routeToOwnerAdmin(user.id);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function routeToOwnerAdmin(userId: string) {
+    const host = window.location.host;
+    const subLabel = host.split(':')[0].split('.')[0];
+    const isApex = subLabel === 'sajian' || subLabel === 'www' || subLabel === 'localhost';
+
+    if (!isApex) {
+      const { data: t } = await supabase
+        .from('tenants')
+        .select('slug, owner_user_id')
+        .eq('slug', subLabel)
+        .maybeSingle();
+      if (t && t.owner_user_id === userId) {
+        window.location.href = '/admin';
+        return;
+      }
+      // Fall through to apex-style lookup if subdomain tenant isn't owned by this user.
+    }
+
+    const { data: owned } = await supabase
+      .from('tenants')
+      .select('slug, created_at')
+      .eq('owner_user_id', userId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const slug = owned?.[0]?.slug;
+    if (!slug) {
+      setStage('email');
+      setError('Akun ini belum punya toko. Buat toko dulu di /signup.');
+      return;
+    }
+    if (host.includes('localhost')) {
+      window.location.href = `http://${slug}.localhost:${window.location.port || 3000}/admin`;
+    } else {
+      window.location.href = `https://${slug}.sajian.app/admin`;
+    }
+  }
 
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();
@@ -50,158 +107,122 @@ export default function LoginPage() {
       setError(error?.message ?? 'Kode salah');
       return;
     }
-
     setStage('redirecting');
     setHint('Mencari toko kamu…');
-
-    // If we're already on a tenant subdomain (e.g. mindiology.sajian.app/login),
-    // verify ownership of THAT specific tenant. This avoids the
-    // "multiple rows returned" error when a user owns >1 tenants.
-    const host = window.location.host;
-    const subLabel = host.split(':')[0].split('.')[0];
-    const isApex = subLabel === 'sajian' || subLabel === 'www' || subLabel === 'localhost';
-
-    if (!isApex) {
-      const { data: targetTenant, error: tErr } = await supabase
-        .from('tenants')
-        .select('slug, owner_user_id, is_active')
-        .eq('slug', subLabel)
-        .maybeSingle();
-      if (tErr) {
-        setStage('otp');
-        setLoading(false);
-        setError(tErr.message);
-        return;
-      }
-      if (!targetTenant) {
-        setStage('otp');
-        setLoading(false);
-        setError(`Toko "${subLabel}" tidak ditemukan.`);
-        return;
-      }
-      if (targetTenant.owner_user_id !== data.user.id) {
-        setStage('otp');
-        setLoading(false);
-        setError('Email ini bukan pemilik toko ini.');
-        return;
-      }
-      window.location.href = `/admin`;
-      return;
-    }
-
-    // Apex login: find tenants this user owns. If exactly one, redirect there.
-    // If multiple, pick the most recent (rare edge case).
-    const { data: owned, error: tErr } = await supabase
-      .from('tenants')
-      .select('slug, created_at')
-      .eq('owner_user_id', data.user.id)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (tErr) {
-      setStage('otp');
-      setLoading(false);
-      setError(tErr.message);
-      return;
-    }
-
-    const ownedTenant = owned?.[0];
-    if (!ownedTenant) {
-      setStage('otp');
-      setLoading(false);
-      setError('Akun ini belum punya toko. Buat toko di sajian.app/signup.');
-      return;
-    }
-
-    if (host.includes('localhost')) {
-      window.location.href = `http://${ownedTenant.slug}.localhost:${window.location.port || 3000}/admin`;
-    } else {
-      window.location.href = `https://${ownedTenant.slug}.sajian.app/admin`;
-    }
+    await routeToOwnerAdmin(data.user.id);
   }
 
   return (
-    <main className="min-h-screen bg-[#F4EDE0] text-[#0A0B0A] flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-sm">
-        <a href="/" className="inline-block mb-10 text-lg" style={{ fontFamily: 'var(--font-display, serif)' }}>
-          Sajian<span className="text-[#B8732E]">.</span>
-        </a>
-        <h1 className="text-3xl font-medium tracking-tight mb-2" style={{ fontFamily: 'var(--font-display, serif)' }}>
-          Masuk ke toko kamu
-        </h1>
-        <p className="text-sm text-zinc-600 mb-8">
-          Kode verifikasi akan dikirim ke email yang kamu daftarkan saat onboarding.
-        </p>
+    <>
+      <PageNav label="Masuk" backHref="/" caption="owner login" />
 
-        {stage === 'email' && (
-          <form onSubmit={sendOtp} className="space-y-4">
-            <label className="block">
-              <span className="text-xs uppercase tracking-wider text-zinc-500">Email</span>
-              <input
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="kamu@contoh.com"
-                className="mt-1 w-full h-12 px-4 rounded-full border border-zinc-300 bg-white focus:outline-none focus:border-zinc-800"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={loading || email.length < 5}
-              className="w-full h-12 rounded-full bg-[#0A0B0A] text-[#F4EDE0] font-medium disabled:opacity-40 flex items-center justify-center gap-2"
-            >
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Kirim kode
-            </button>
-          </form>
-        )}
+      <main className="auth">
+        <div className="auth__ornament" aria-hidden="true">❦</div>
 
-        {stage === 'otp' && (
-          <form onSubmit={verifyOtp} className="space-y-4">
-            <div className="text-xs text-zinc-600">
-              Kode dikirim ke <span className="font-medium">{email}</span>.{' '}
-              <button type="button" onClick={() => setStage('email')} className="underline">
-                Ubah
-              </button>
+        <section className="auth__card">
+          <header className="auth__header">
+            <span className="auth__kicker">Sajian · masuk akun</span>
+            <h1 className="auth__title">Masuk ke toko kamu.</h1>
+            <p className="auth__sub">
+              Kode 6 digit akan dikirim ke email yang kamu pakai saat daftar.
+              Bisa login dari mana aja — kode cuma berlaku 10 menit.
+            </p>
+          </header>
+
+          {stage === 'checking' && (
+            <div className="auth__wait">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Mengecek sesi…</span>
             </div>
-            <label className="block">
-              <span className="text-xs uppercase tracking-wider text-zinc-500">Kode verifikasi</span>
-              <input
-                inputMode="numeric"
-                pattern="[0-9]*"
-                required
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                placeholder="123456"
-                className="mt-1 w-full h-12 px-4 rounded-full border border-zinc-300 bg-white tracking-widest text-lg focus:outline-none focus:border-zinc-800"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={loading || otp.length < 6}
-              className="w-full h-12 rounded-full bg-[#0A0B0A] text-[#F4EDE0] font-medium disabled:opacity-40 flex items-center justify-center gap-2"
-            >
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Masuk
-            </button>
-          </form>
-        )}
+          )}
 
-        {stage === 'redirecting' && (
-          <div className="flex items-center gap-3 text-sm text-zinc-600">
-            <Loader2 className="h-4 w-4 animate-spin" /> {hint}
-          </div>
-        )}
+          {stage === 'email' && (
+            <form onSubmit={sendOtp} className="auth__form">
+              <label className="auth__field">
+                <span className="auth__label">Email</span>
+                <div className="auth__input-wrap">
+                  <Mail className="auth__input-icon" aria-hidden="true" />
+                  <input
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="kamu@contoh.com"
+                    className="auth__input"
+                  />
+                </div>
+              </label>
+              <button
+                type="submit"
+                disabled={loading || email.length < 5}
+                className="auth__submit"
+              >
+                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                Kirim kode ke email
+              </button>
+              <p className="auth__fine">
+                Baru pertama kali? <Link href="/signup" className="auth__link">Buat toko →</Link>
+              </p>
+            </form>
+          )}
 
-        {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
+          {stage === 'otp' && (
+            <form onSubmit={verifyOtp} className="auth__form">
+              <div className="auth__sent">
+                Kode sudah dikirim ke <strong>{email}</strong>.{' '}
+                <button type="button" onClick={() => setStage('email')} className="auth__link">
+                  Ubah
+                </button>
+              </div>
+              <label className="auth__field">
+                <span className="auth__label">Kode verifikasi</span>
+                <div className="auth__input-wrap">
+                  <KeyRound className="auth__input-icon" aria-hidden="true" />
+                  <input
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    required
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="123 456"
+                    className="auth__input auth__input--otp"
+                  />
+                </div>
+              </label>
+              <button
+                type="submit"
+                disabled={loading || otp.length < 6}
+                className="auth__submit"
+              >
+                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                Masuk
+              </button>
+              <p className="auth__fine">
+                Nggak nerima email? Cek folder <em>spam</em> atau{' '}
+                <button type="button" onClick={() => setStage('email')} className="auth__link">
+                  kirim ulang
+                </button>.
+              </p>
+            </form>
+          )}
 
-        <p className="mt-10 text-xs text-zinc-500">
-          Belum punya toko? <a href="/signup" className="underline">Buat toko →</a>
-        </p>
-      </div>
-    </main>
+          {stage === 'redirecting' && (
+            <div className="auth__wait">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>{hint ?? 'Mengalihkan…'}</span>
+            </div>
+          )}
+
+          {error && <div className="auth__error">{error}</div>}
+        </section>
+
+        <footer className="auth__foot">
+          <span className="auth__foot-rule" aria-hidden="true" />
+          <span>sajian · untuk f&b indonesia</span>
+          <span className="auth__foot-rule" aria-hidden="true" />
+        </footer>
+      </main>
+    </>
   );
 }
