@@ -6,7 +6,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LogOut, Store, ExternalLink } from 'lucide-react';
+import { LogOut, Store, ExternalLink, Sparkles } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type { PublicTenant } from '@/lib/tenant';
 
@@ -44,6 +44,15 @@ export function AdminTabs({ tenant, active }: { tenant: PublicTenant; active: Ad
   return (
     <div className="flex flex-col gap-4 md:gap-6 mb-6">
       <div className="flex items-center gap-3 flex-wrap">
+        <a
+          href="https://sajian.app/setup"
+          className="inline-flex items-center gap-2 text-xs h-8 px-3 rounded-full text-white transition hover:opacity-90"
+          style={{ background: primary }}
+          title="Bikin ulang menu, warna, logo, layout dari AI"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Setup ulang dengan AI
+        </a>
         <Link
           href="/"
           className="inline-flex items-center gap-2 text-xs h-8 px-3 rounded-full border border-zinc-200 hover:border-zinc-400 transition"
