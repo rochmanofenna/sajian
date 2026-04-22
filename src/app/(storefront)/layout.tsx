@@ -4,6 +4,7 @@
 
 import { getPublicTenant } from '@/lib/tenant';
 import { StoreHeader } from '@/components/storefront/StoreHeader';
+import { StoreFooter } from '@/components/storefront/StoreFooter';
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {
   const tenant = await getPublicTenant();
@@ -23,9 +24,10 @@ export default async function StorefrontLayout({ children }: { children: React.R
   }
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className="flex flex-col flex-1 min-h-screen">
       <StoreHeader tenant={tenant} />
       <div className="flex-1">{children}</div>
+      <StoreFooter tenant={tenant} />
     </div>
   );
 }
