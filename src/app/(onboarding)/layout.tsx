@@ -1,17 +1,23 @@
-// Onboarding layout. No tenant chrome — the whole (storefront) layout is
-// for live restaurants. We show a minimal header with the Sajian wordmark.
+// Onboarding layout. Editorial warm shell — no tenant chrome, no marketing
+// nav clutter. Just the Sajian wordmark, a tiny progress marker, and a sign-
+// out affordance. Keeps the owner focused on the chat + preview.
 
 import Link from 'next/link';
 
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#FDF6EC] text-[#1A1A18]">
-      <header className="h-14 border-b border-[#1B5E3B]/10 flex items-center px-4">
-        <Link href="/" className="font-semibold tracking-tight text-[#1B5E3B]">
-          sajian
+    <div className="ob-shell">
+      <header className="ob-header">
+        <Link href="/" className="ob-wordmark" aria-label="Sajian">
+          Sajian<span className="ob-wordmark__dot">.</span>
         </Link>
+
+        <div className="ob-header__meta">
+          <span className="ob-header__dot" aria-hidden="true" />
+          <span>Onboarding · sesi aktif</span>
+        </div>
       </header>
-      <main>{children}</main>
+      <main className="ob-main">{children}</main>
     </div>
   );
 }

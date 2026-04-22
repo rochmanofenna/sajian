@@ -74,12 +74,27 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
       .eq('user_id', userId)
       .maybeSingle();
 
+    const saved = (data?.messages as ChatMessage[] | null) ?? [];
+    const messages =
+      saved.length > 0
+        ? saved
+        : [
+            {
+              id: 'greeting',
+              role: 'assistant' as const,
+              content:
+                'Halo! 👋 Aku asisten Sajian. Aku bakal bantu kamu bikin halaman pemesanan online buat restoran kamu. Prosesnya sekitar 15 menit.\n\nPertama, apa nama restoran kamu?',
+              kind: 'text' as const,
+              createdAt: Date.now(),
+            },
+          ];
+
     set({
       userId,
       phone,
       step: (data?.step as OnboardingStep) ?? 'welcome',
       draft: (data?.draft as TenantDraft) ?? {},
-      messages: (data?.messages as ChatMessage[]) ?? [],
+      messages,
     });
   },
 

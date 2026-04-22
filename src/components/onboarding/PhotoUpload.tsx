@@ -1,8 +1,7 @@
 'use client';
 
-// Drag/drop or tap-to-upload. Accepts multiple images for menu, single for
-// storefront/logo. Returns the File objects to the parent which POSTs them
-// to the relevant AI endpoint.
+// Drag/drop or tap-to-upload. Editorial warm look — dashed ochre border on
+// hover, deep ink icon, hint line in mono for the file-type whitelist.
 
 import { useRef, useState } from 'react';
 import { ImagePlus, Loader2 } from 'lucide-react';
@@ -21,7 +20,7 @@ export function PhotoUpload({
   multiple = false,
   maxFiles = multiple ? 6 : 1,
   accept = 'image/jpeg,image/png,image/gif,image/webp',
-  hint = 'JPG / PNG / GIF / WebP, max 8MB',
+  hint = 'JPG · PNG · WebP · max 8MB',
   label,
   busy = false,
   onFiles,
@@ -47,9 +46,9 @@ export function PhotoUpload({
         setDragging(false);
         handleFiles(e.dataTransfer.files);
       }}
-      className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 cursor-pointer transition ${
-        dragging ? 'border-[#1B5E3B] bg-[#1B5E3B]/5' : 'border-[#1B5E3B]/25 bg-white/60'
-      } ${busy ? 'pointer-events-none opacity-60' : ''}`}
+      data-dragging={dragging || undefined}
+      data-busy={busy || undefined}
+      className="ob-upload"
     >
       <input
         ref={inputRef}
@@ -59,13 +58,11 @@ export function PhotoUpload({
         className="hidden"
         onChange={(e) => handleFiles(e.target.files)}
       />
-      {busy ? (
-        <Loader2 className="h-6 w-6 animate-spin text-[#1B5E3B]" />
-      ) : (
-        <ImagePlus className="h-6 w-6 text-[#1B5E3B]" />
-      )}
-      <span className="text-sm text-zinc-700">{label}</span>
-      <span className="text-xs text-zinc-500">{hint}</span>
+      <span className="ob-upload__icon" aria-hidden="true">
+        {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
+      </span>
+      <span className="ob-upload__label">{label}</span>
+      <span className="ob-upload__hint">{hint}</span>
     </label>
   );
 }
