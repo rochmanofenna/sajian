@@ -15,6 +15,9 @@ export function errorResponse(err: unknown): NextResponse {
     if (err.message === 'NO_TENANT') {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
     }
+    if (err.message === 'NOT_OWNER') {
+      return NextResponse.json({ error: 'Not authorised' }, { status: 403 });
+    }
     console.error('[api] unexpected error:', err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

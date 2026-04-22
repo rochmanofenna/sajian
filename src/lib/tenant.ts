@@ -7,15 +7,14 @@
 
 import { cache } from 'react';
 import { headers } from 'next/headers';
+import type { PosProvider, ThemeTemplate } from './tenant-types';
 import { createServiceClient } from './supabase/service';
 
-export type PosProvider = 'sajian_native' | 'esb';
-
-// Storefront layout presets. The AI onboarding picks one based on food type;
-// owners can override via chat ("buat lebih modern", "kayak kedai kopi", etc.).
-export type ThemeTemplate = 'kedai' | 'warung' | 'modern' | 'food-hall' | 'classic';
-
-export const THEME_TEMPLATES: ThemeTemplate[] = ['kedai', 'warung', 'modern', 'food-hall', 'classic'];
+// Re-export client-safe fragments so server callers get a single import
+// surface. Anything new that's also used from a Client Component should
+// live in `./tenant-types.ts`.
+export { THEME_TEMPLATES } from './tenant-types';
+export type { PosProvider, ThemeTemplate } from './tenant-types';
 
 export interface TenantTier {
   name: string;
