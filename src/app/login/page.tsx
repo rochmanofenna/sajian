@@ -54,12 +54,50 @@ export default function LoginPage() {
     setStage('redirecting');
     setHint('Mencari toko kamu…');
 
-    const { data: ownedTenant, error: tErr } = await supabase
+    // If we're already on a tenant subdomain (e.g. mindiology.sajian.app/login),
+    // verify ownership of THAT specific tenant. This avoids the
+    // "multiple rows returned" error when a user owns >1 tenants.
+    const host = window.location.host;
+    const subLabel = host.split(':')[0].split('.')[0];
+    const isApex = subLabel === 'sajian' || subLabel === 'www' || subLabel === 'localhost';
+
+    if (!isApex) {
+      const { data: targetTenant, error: tErr } = await supabase
+        .from('tenants')
+        .select('slug, owner_user_id, is_active')
+        .eq('slug', subLabel)
+        .maybeSingle();
+      if (tErr) {
+        setStage('otp');
+        setLoading(false);
+        setError(tErr.message);
+        return;
+      }
+      if (!targetTenant) {
+        setStage('otp');
+        setLoading(false);
+        setError(`Toko "${subLabel}" tidak ditemukan.`);
+        return;
+      }
+      if (targetTenant.owner_user_id !== data.user.id) {
+        setStage('otp');
+        setLoading(false);
+        setError('Email ini bukan pemilik toko ini.');
+        return;
+      }
+      window.location.href = `/admin`;
+      return;
+    }
+
+    // Apex login: find tenants this user owns. If exactly one, redirect there.
+    // If multiple, pick the most recent (rare edge case).
+    const { data: owned, error: tErr } = await supabase
       .from('tenants')
-      .select('slug')
+      .select('slug, created_at')
       .eq('owner_user_id', data.user.id)
       .eq('is_active', true)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(1);
 
     if (tErr) {
       setStage('otp');
@@ -68,6 +106,7 @@ export default function LoginPage() {
       return;
     }
 
+    const ownedTenant = owned?.[0];
     if (!ownedTenant) {
       setStage('otp');
       setLoading(false);
@@ -75,9 +114,6 @@ export default function LoginPage() {
       return;
     }
 
-    // Cross-subdomain redirect. Localhost resolves wildcard via .localhost;
-    // production is always under the sajian.app apex.
-    const host = window.location.host;
     if (host.includes('localhost')) {
       window.location.href = `http://${ownedTenant.slug}.localhost:${window.location.port || 3000}/admin`;
     } else {
