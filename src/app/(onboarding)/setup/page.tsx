@@ -100,12 +100,46 @@ export default function SetupPage() {
       }
       await init(user.id, user.phone ?? user.email ?? '');
 
-      // If we're on a tenant subdomain and the store has no draft data yet,
-      // seed it from the live tenant so the preview shows their actual store.
+      // Re-seed from the live tenant on entry when we're on a tenant
+      // subdomain. Two cases trigger this:
+      //   · No name in draft — fresh session, first seed.
+      //   · Name present but menu empty — recovery from stale drafts that
+      //     were seeded before the full-menu seed pass shipped.
+      //   · The owner clicked "Setup ulang dengan AI" from /admin — we want
+      //     the preview to reflect current reality, not last session's edits.
+      // To keep it simple, we re-seed whenever (draft.menu_categories is
+      // empty) AND (we're on a tenant subdomain the user owns). Pending
+      // chat-driven edits still live in messages, so the conversation
+      // carries forward even when the draft is freshly re-pulled.
       const current = useOnboarding.getState().draft;
-      if (!current.name) {
+      const draftIsStale =
+        !current.name ||
+        !current.menu_categories ||
+        !current.menu_categories.some((c) => c.items.length > 0);
+      if (draftIsStale) {
         const seeded = await seedDraftFromLiveTenant(user.id);
-        if (seeded) await useOnboarding.getState().patchDraft(seeded);
+        if (seeded) {
+          await useOnboarding.getState().patchDraft(seeded);
+          // If the only message is the fresh-onboarding greeting, swap it
+          // for a re-setup greeting that knows the store is already live.
+          const messages = useOnboarding.getState().messages;
+          const onlyDefaultGreeting =
+            messages.length === 1 && messages[0].id === 'greeting';
+          if (onlyDefaultGreeting) {
+            const itemCount =
+              seeded.menu_categories?.reduce((n, c) => n + c.items.length, 0) ?? 0;
+            const catCount = seeded.menu_categories?.length ?? 0;
+            await useOnboarding.getState().setMessages([
+              {
+                id: 'resetup-greeting',
+                role: 'assistant',
+                kind: 'text',
+                createdAt: Date.now(),
+                content: `Halo lagi! 👋 Tokomu **${seeded.name}** udah online — ${itemCount} menu di ${catCount} kategori.\n\nMau ubah apa? Contoh:\n• "Naikin harga nasi goreng jadi 30rb"\n• "Tambah es kopi susu 15rb ke minuman"\n• "Warna primary lebih gelap"\n• "Hapus kategori snack"`,
+              },
+            ]);
+          }
+        }
       }
 
       setBooting(false);

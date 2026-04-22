@@ -35,6 +35,7 @@ interface OnboardingState {
   removeItem: (itemName: string) => Promise<void>;
   updateItem: (itemName: string, field: 'name' | 'price' | 'description', value: string | number) => Promise<void>;
   pushMessage: (msg: Omit<ChatMessage, 'id' | 'createdAt'>) => Promise<ChatMessage>;
+  setMessages: (messages: ChatMessage[]) => Promise<void>;
   setLoading: (b: boolean) => void;
   setError: (e: string | null) => void;
 }
@@ -162,6 +163,11 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
     set((s) => ({ messages: [...s.messages, full] }));
     persist(get());
     return full;
+  },
+
+  setMessages: async (messages) => {
+    set({ messages });
+    persist(get());
   },
 
   setLoading: (b) => set({ loading: b }),
