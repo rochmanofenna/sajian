@@ -17,6 +17,7 @@ export interface MenuItemDraft {
   price: number;
   is_available?: boolean;
   tags?: string[];
+  image_url?: string | null;
 }
 
 export interface CategoryDraft {

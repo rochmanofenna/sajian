@@ -15,10 +15,14 @@ import type { CategoryDraft, MenuItemDraft, TenantDraft } from '@/lib/onboarding
 
 type DeviceMode = 'phone' | 'desktop';
 
-// When the owner lands on /setup from /admin we want to pre-fill the draft
-// from their live tenant instead of showing an empty shell. Everything they
-// edit then either updates the live tenant (if POST /api/onboarding/launch
-// detects an existing ownership) or creates a fresh one (apex /signup path).
+// When the owner lands on /setup from /admin we pre-fill the draft from their
+// live tenant instead of showing an empty shell. The preview then reflects
+// their actual store on load, and any edit the owner makes via AI chat either
+// updates the live tenant (POST /api/onboarding/launch detects existing
+// ownership) or creates a fresh one (apex /signup path).
+//
+// IMPORTANT: pull every column the preview might render — dropping a field
+// here makes the preview look incomplete even though the live store is fine.
 async function seedDraftFromLiveTenant(userId: string): Promise<TenantDraft | null> {
   const host = window.location.hostname;
   const sub = host.split(':')[0].split('.')[0];
@@ -28,7 +32,7 @@ async function seedDraftFromLiveTenant(userId: string): Promise<TenantDraft | nu
   const { data: tenant } = await supabase
     .from('tenants')
     .select(
-      'id, slug, name, tagline, colors, theme_template, logo_url, hero_image_url, operating_hours, owner_user_id',
+      'id, slug, name, tagline, colors, theme_template, logo_url, hero_image_url, operating_hours, pos_provider, owner_user_id',
     )
     .eq('slug', sub)
     .maybeSingle();
@@ -37,20 +41,24 @@ async function seedDraftFromLiveTenant(userId: string): Promise<TenantDraft | nu
   const { data: cats } = await supabase
     .from('menu_categories')
     .select(
-      'name, sort_order, menu_items(name, price, description, sort_order)',
+      'name, sort_order, menu_items(name, price, description, image_url, is_available, tags, sort_order)',
     )
     .eq('tenant_id', tenant.id)
     .order('sort_order');
 
+  type DBItem = MenuItemDraft & { sort_order?: number };
   const menuCategories: CategoryDraft[] = (cats ?? []).map((c) => ({
     name: c.name as string,
-    items: ((c.menu_items as MenuItemDraft[] | null) ?? [])
+    items: ((c.menu_items as DBItem[] | null) ?? [])
       .slice()
-      .sort((a, b) => ((a as MenuItemDraft & { sort_order?: number }).sort_order ?? 0) - ((b as MenuItemDraft & { sort_order?: number }).sort_order ?? 0))
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((i) => ({
         name: i.name,
         price: i.price,
         description: i.description,
+        image_url: i.image_url ?? null,
+        is_available: i.is_available ?? true,
+        tags: i.tags ?? [],
       })),
   }));
 
@@ -63,6 +71,7 @@ async function seedDraftFromLiveTenant(userId: string): Promise<TenantDraft | nu
     logo_url: (tenant.logo_url as string | null) ?? null,
     hero_image_url: (tenant.hero_image_url as string | null) ?? null,
     operating_hours: (tenant.operating_hours as TenantDraft['operating_hours']) ?? undefined,
+    pos_provider: (tenant.pos_provider as TenantDraft['pos_provider']) ?? undefined,
     menu_categories: menuCategories,
   };
 }
@@ -103,15 +112,39 @@ export default function SetupPage() {
     })();
   }, [init, router]);
 
-  // Debounce preview reload so rapid draft changes don't thrash the iframe.
+  // Live preview via postMessage. Every draft change gets relayed to the
+  // iframe so the owner sees colors + menu + logo update without a reload or
+  // flicker. Debounce the send by 80ms so a burst of patches (e.g. AI adding
+  // 10 menu items at once) collapses into one repaint.
   useEffect(() => {
     if (!iframeRef.current || !userId) return;
     const t = setTimeout(() => {
       const el = iframeRef.current;
-      if (el?.contentWindow) el.contentWindow.location.reload();
-    }, 500);
+      el?.contentWindow?.postMessage(
+        { type: 'sajian:draft', draft },
+        window.location.origin,
+      );
+    }, 80);
     return () => clearTimeout(t);
   }, [draft, userId]);
+
+  // Preview announces readiness after it mounts — replay the current draft
+  // so the first paint reflects any edits that happened before the iframe
+  // loaded (e.g. the seed-from-live-tenant flow).
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return;
+      const data = e.data as { type?: string } | null;
+      if (data?.type === 'sajian:preview:ready') {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'sajian:draft', draft: useOnboarding.getState().draft },
+          window.location.origin,
+        );
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
 
   async function launch() {
     setLaunching(true);
