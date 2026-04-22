@@ -45,6 +45,7 @@ const SYSTEM = (
   items: Array<MenuItemRow & { category_id: string | null }>,
 ) => {
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
+  const catLines = categories.map((c) => `- "${c.name}" (id: ${c.id})`).join('\n');
   const itemLines = items
     .map(
       (it) =>
@@ -63,6 +64,9 @@ Current live state:
 ${JSON.stringify({ tagline, theme_template: template, colors, operating_hours: hours }, null, 2)}
 \`\`\`
 
+Categories (${categories.length} total):
+${catLines || '(kosong)'}
+
 Menu items (${items.length} total):
 ${itemLines || '(kosong)'}
 
@@ -77,11 +81,15 @@ Available actions:
   <!--ACTION:{"type":"update_menu_item","id":"<uuid>","field":"price","value":28000}-->
   <!--ACTION:{"type":"update_menu_item","id":"<uuid>","field":"name","value":"Kopi Susu Gula Aren"}-->
   <!--ACTION:{"type":"update_menu_item","id":"<uuid>","field":"description","value":"Susu segar + gula aren"}-->
+  <!--ACTION:{"type":"add_item","category_id":"<uuid>","name":"Es Kopi Susu","price":15000,"description":"Kopi + susu segar"}-->
+  <!--ACTION:{"type":"remove_item","id":"<uuid>"}-->
 
 Phrase mapping (examples — match semantically, don't pattern-match literally):
 - "nasi goreng habis hari ini"   → update_menu_item field=is_available value=false
 - "kopi susu gula aren available lagi" → update_menu_item field=is_available value=true
 - "naikin harga nasi goreng jadi 30rb" → update_menu_item field=price value=30000
+- "tambahin es kopi susu 15rb ke minuman" → add_item category_id=<uuid of Minuman> name=... price=15000
+- "hapus nasi goreng seafood"    → remove_item id=<uuid>
 - "ganti warna primary ke hijau gelap" → update_colors colors={"primary":"#..."}
 - "tagline-nya ganti jadi X"     → update_tagline
 - "jam buka hari ini 10 pagi"    → update_hours hours={"monday":{"open":"10:00","close":"22:00"}}
@@ -89,6 +97,8 @@ Phrase mapping (examples — match semantically, don't pattern-match literally):
 
 Rules:
 - MATCH item names case-insensitively and fuzzily (e.g. "nasi goreng" matches "NASI GORENG SEAFOOD" if that's the closest). If multiple items could match, ASK which one.
+- For add_item: use the category_id from the list above. If the owner didn't say which category, ASK — don't guess.
+- For remove_item: confirm with the owner before emitting. Say "Oke hapus [item]? Ketik 'ya'" and wait for confirmation before emitting the action.
 - Prices are integers in Rupiah. "28 ribu"/"28rb"/"28K" → 28000.
 - Colors: hex strings like "#1B5E3B". If the owner says "lebih gelap", darken the current primary by ~20%. If "lebih warm", shift toward warmer hue.
 - Template: one of kedai | warung | modern | food-hall | classic.

@@ -1,10 +1,10 @@
-// PATCH /api/admin/menu/[id] — edit a single menu item (price, availability,
-// description, name, image_url, category move). ESB-backed tenants are
-// blocked — their master menu lives in ESB, we'd have to push up there first.
+// PATCH /api/admin/categories/[id] — rename a category or change its
+// sort_order (up/down reorder from the UI).
 //
-// DELETE /api/admin/menu/[id] — remove item. If an image was uploaded via
-// the /image endpoint, it's left in Storage (cheap to keep around; cleanup
-// is a future housekeeping task).
+// DELETE /api/admin/categories/[id] — cascade delete: items first, then the
+// category row. FK is `on delete set null` so items would survive as
+// orphaned; we explicitly want them gone when the owner says "Hapus kategori
+// dan semua item di dalamnya".
 
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -14,13 +14,9 @@ import { createServiceClient } from '@/lib/supabase/service';
 
 const patchSchema = z
   .object({
-    name: z.string().min(1).max(240).optional(),
-    description: z.string().max(1000).nullable().optional(),
-    price: z.number().int().nonnegative().optional(),
-    is_available: z.boolean().optional(),
-    image_url: z.string().url().nullable().optional(),
-    category_id: z.string().uuid().optional(),
+    name: z.string().min(1).max(120).optional(),
     sort_order: z.number().int().nonnegative().optional(),
+    is_active: z.boolean().optional(),
   })
   .strict();
 
@@ -32,7 +28,7 @@ export async function PATCH(
     const { tenant } = await requireOwnerOrThrow();
     if (tenant.pos_provider === 'esb') {
       return NextResponse.json(
-        { error: 'Menu ESB tidak bisa diedit di sini — ubah dari portal ESB.' },
+        { error: 'Kategori ESB dikelola dari portal ESB.' },
         { status: 409 },
       );
     }
@@ -43,27 +39,15 @@ export async function PATCH(
     }
 
     const supabase = createServiceClient();
-
-    // If moving to a new category, verify it belongs to this tenant.
-    if (parsed.data.category_id) {
-      const { data: cat } = await supabase
-        .from('menu_categories')
-        .select('id')
-        .eq('id', parsed.data.category_id)
-        .eq('tenant_id', tenant.id)
-        .maybeSingle();
-      if (!cat) return badRequest('Kategori tidak ditemukan');
-    }
-
     const { data, error } = await supabase
-      .from('menu_items')
+      .from('menu_categories')
       .update(parsed.data)
       .eq('id', id)
       .eq('tenant_id', tenant.id)
       .select('*')
       .single();
     if (error) throw new Error(error.message);
-    return NextResponse.json({ item: data });
+    return NextResponse.json({ category: data });
   } catch (err) {
     return errorResponse(err);
   }
@@ -77,14 +61,24 @@ export async function DELETE(
     const { tenant } = await requireOwnerOrThrow();
     if (tenant.pos_provider === 'esb') {
       return NextResponse.json(
-        { error: 'Menu ESB tidak bisa dihapus di sini.' },
+        { error: 'Kategori ESB tidak bisa dihapus di sini.' },
         { status: 409 },
       );
     }
     const { id } = await params;
     const supabase = createServiceClient();
-    const { error } = await supabase
+
+    // Delete child items first (FK is set-null, so this is a deliberate
+    // cascade, not the default).
+    const { error: itemErr } = await supabase
       .from('menu_items')
+      .delete()
+      .eq('category_id', id)
+      .eq('tenant_id', tenant.id);
+    if (itemErr) throw new Error(itemErr.message);
+
+    const { error } = await supabase
+      .from('menu_categories')
       .delete()
       .eq('id', id)
       .eq('tenant_id', tenant.id);

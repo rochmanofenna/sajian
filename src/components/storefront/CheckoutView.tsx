@@ -24,8 +24,18 @@ const METHODS: MethodDef[] = [
   { value: 'cashier', label: 'Bayar di Kasir', sub: 'Tunjukkan QR/nomor ke kasir', icon: 'store' },
 ];
 
+// ESB-backed tenants route every order through the POS, which only supports
+// the cashier flow in Phase 1. Exposing online payments would silently fall
+// through to the native Xendit path, creating a charge the POS never sees.
+// Gate at the UI so the customer can't pick a method that won't work.
+function methodsFor(posProvider: string): MethodDef[] {
+  if (posProvider === 'esb') return METHODS.filter((m) => m.value === 'cashier');
+  return METHODS;
+}
+
 export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
   const router = useRouter();
+  const availableMethods = methodsFor(tenant.pos_provider);
   const {
     items,
     branchCode,
@@ -41,7 +51,7 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
-  const [method, setMethod] = useState<PaymentMethod>('qris');
+  const [method, setMethod] = useState<PaymentMethod>(() => availableMethods[0]?.value ?? 'cashier');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -168,7 +178,7 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
         <section className="space-y-2" aria-label="Metode pembayaran">
           <Label text="Metode pembayaran" />
           <div className="grid gap-2">
-            {METHODS.map((m) => {
+            {availableMethods.map((m) => {
               const active = method === m.value;
               return (
                 <button

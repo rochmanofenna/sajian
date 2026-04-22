@@ -1,4 +1,4 @@
-// sajian.app/login — owner re-entry. Email OTP, session-skip, tenant-aware
+// sajian.app/login — owner re-entry. Phone OTP, session-skip, tenant-aware
 // redirect. Matches the editorial warmth of /signup and /setup so the owner
 // never feels like they fell out of the Sajian world.
 
@@ -6,16 +6,17 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Mail, KeyRound } from 'lucide-react';
+import { Loader2, Phone, KeyRound } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { PageNav } from '@/components/chrome/PageNav';
+import { formatIdPhoneDisplay, isLikelyIdPhone, normalizeIdPhone } from '@/lib/auth/phone';
 
-type Stage = 'checking' | 'email' | 'otp' | 'redirecting';
+type Stage = 'checking' | 'phone' | 'otp' | 'redirecting';
 
 export default function LoginPage() {
   const supabase = createClient();
   const [stage, setStage] = useState<Stage>('checking');
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +29,7 @@ export default function LoginPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        setStage('email');
+        setStage('phone');
         return;
       }
       setHint('Sudah masuk — membuka dashboard…');
@@ -66,7 +67,7 @@ export default function LoginPage() {
 
     const slug = owned?.[0]?.slug;
     if (!slug) {
-      setStage('email');
+      setStage('phone');
       setError('Akun ini belum punya toko. Buat toko dulu di /signup.');
       return;
     }
@@ -77,12 +78,20 @@ export default function LoginPage() {
     }
   }
 
+  const canSend = isLikelyIdPhone(phone) && !loading;
+  const normalized = normalizeIdPhone(phone);
+  const display = formatIdPhoneDisplay(phone);
+
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();
+    if (!canSend) {
+      setError('Nomor HP tidak valid');
+      return;
+    }
     setLoading(true);
     setError(null);
     const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
+      phone: normalized,
       options: { shouldCreateUser: false },
     });
     setLoading(false);
@@ -98,9 +107,9 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     const { data, error } = await supabase.auth.verifyOtp({
-      email: email.trim().toLowerCase(),
+      phone: normalized,
       token: otp,
-      type: 'email',
+      type: 'sms',
     });
     if (error || !data.user) {
       setLoading(false);
@@ -124,7 +133,7 @@ export default function LoginPage() {
             <span className="auth__kicker">Sajian · masuk akun</span>
             <h1 className="auth__title">Masuk ke toko kamu.</h1>
             <p className="auth__sub">
-              Kode 6 digit akan dikirim ke email yang kamu pakai saat daftar.
+              Kode 6 digit akan dikirim via SMS ke nomor HP yang kamu pakai saat daftar.
               Bisa login dari mana aja — kode cuma berlaku 10 menit.
             </p>
           </header>
@@ -136,30 +145,32 @@ export default function LoginPage() {
             </div>
           )}
 
-          {stage === 'email' && (
+          {stage === 'phone' && (
             <form onSubmit={sendOtp} className="auth__form">
               <label className="auth__field">
-                <span className="auth__label">Email</span>
+                <span className="auth__label">Nomor WhatsApp</span>
                 <div className="auth__input-wrap">
-                  <Mail className="auth__input-icon" aria-hidden="true" />
+                  <Phone className="auth__input-icon" aria-hidden="true" />
                   <input
-                    type="email"
+                    type="tel"
                     required
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="kamu@contoh.com"
+                    autoComplete="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="0812 3456 7890"
                     className="auth__input"
                   />
                 </div>
+                {display && <span className="mt-1 block text-xs text-zinc-500 font-mono">{display}</span>}
               </label>
               <button
                 type="submit"
-                disabled={loading || email.length < 5}
+                disabled={!canSend}
                 className="auth__submit"
               >
                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                Kirim kode ke email
+                Kirim kode via SMS
               </button>
               <p className="auth__fine">
                 Baru pertama kali? <Link href="/signup" className="auth__link">Buat toko →</Link>
@@ -170,8 +181,8 @@ export default function LoginPage() {
           {stage === 'otp' && (
             <form onSubmit={verifyOtp} className="auth__form">
               <div className="auth__sent">
-                Kode sudah dikirim ke <strong>{email}</strong>.{' '}
-                <button type="button" onClick={() => setStage('email')} className="auth__link">
+                Kode sudah dikirim ke <strong className="font-mono">{display || normalized}</strong>.{' '}
+                <button type="button" onClick={() => setStage('phone')} className="auth__link">
                   Ubah
                 </button>
               </div>
@@ -199,8 +210,8 @@ export default function LoginPage() {
                 Masuk
               </button>
               <p className="auth__fine">
-                Nggak nerima email? Cek folder <em>spam</em> atau{' '}
-                <button type="button" onClick={() => setStage('email')} className="auth__link">
+                Nggak nerima SMS? Tunggu 1 menit lalu{' '}
+                <button type="button" onClick={() => setStage('phone')} className="auth__link">
                   kirim ulang
                 </button>.
               </p>

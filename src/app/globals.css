@@ -2027,8 +2027,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 36px;
-  padding: 0 10px 0 6px;
+  height: 40px;
+  padding: 0 12px 0 8px;
   border-radius: 999px;
   border: 1px dotted color-mix(in oklab, var(--color-dark, #0A0B0A) 28%, transparent);
   background: transparent;
@@ -2039,6 +2039,13 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   transition: background-color 0.18s, border-color 0.18s, color 0.18s;
+  position: relative;
+}
+.pn__back::before {
+  /* Extends the touch target to 44x44 without affecting the visual size. */
+  content: '';
+  position: absolute;
+  inset: -4px -6px;
 }
 .pn__back:hover {
   background: color-mix(in oklab, var(--color-dark, #0A0B0A) 6%, transparent);
@@ -2331,3 +2338,16 @@ body {
     min-height: 420px;
   }
 }
+
+/* Admin toast entrance — used by OrderFeed notifications stack. */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+

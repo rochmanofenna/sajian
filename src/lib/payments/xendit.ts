@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+
 // Xendit payment gateway wrapper.
 //
 // Supports two flows we need for launch:
@@ -63,7 +65,13 @@ export function verifyCallbackToken(token: string | null | undefined): boolean {
     // Fail closed if the env is missing — never accept "any token" in prod.
     return false;
   }
-  return token === expected;
+  if (!token) return false;
+  // Constant-time comparison. Buffers must be equal length for
+  // timingSafeEqual, so we short-circuit first, then compare the bytes.
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 async function xenditFetch<T>(

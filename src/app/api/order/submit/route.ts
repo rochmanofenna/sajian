@@ -208,10 +208,18 @@ export async function POST(req: Request) {
     // Digital payment? Create Xendit payment + patch the order.
     if (isDigital(body.paymentMethod)) {
       try {
-        const host = req.headers.get('host') ?? 'sajian.app';
-        const proto = host.includes('localhost') ? 'http' : 'https';
-        const successUrl = `${proto}://${host}/track/${order.id}?paid=1`;
-        const failureUrl = `${proto}://${host}/track/${order.id}?paid=0`;
+        // Build redirect URLs from a trusted source. Host header could be
+        // spoofed by an intermediate proxy, so we validate it against the
+        // whitelist: *.sajian.app subdomains + localhost for dev. If the
+        // incoming Host doesn't match, fall back to the tenant's canonical
+        // URL derived from its slug.
+        const rawHost = req.headers.get('host') ?? '';
+        const trustedHost = isTrustedHost(rawHost)
+          ? rawHost
+          : `${tenant.slug}.sajian.app`;
+        const proto = trustedHost.includes('localhost') ? 'http' : 'https';
+        const successUrl = `${proto}://${trustedHost}/track/${order.id}?paid=1`;
+        const failureUrl = `${proto}://${trustedHost}/track/${order.id}?paid=0`;
 
         if (body.paymentMethod === 'qris') {
           const qris = await createQRIS({
@@ -288,4 +296,16 @@ export async function POST(req: Request) {
   } catch (err) {
     return errorResponse(err);
   }
+}
+
+// Accepts `slug.sajian.app`, `sajian.app`, and any `localhost[:port]`.
+// Anything else is rejected so a spoofed Host header can't route the
+// customer through an attacker-controlled checkout redirect.
+function isTrustedHost(host: string): boolean {
+  if (!host) return false;
+  const lower = host.toLowerCase();
+  if (lower === 'sajian.app') return true;
+  if (/^[a-z0-9-]+\.sajian\.app$/.test(lower)) return true;
+  if (/^(localhost|[a-z0-9-]+\.localhost)(:\d+)?$/.test(lower)) return true;
+  return false;
 }

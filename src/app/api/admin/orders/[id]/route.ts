@@ -1,10 +1,9 @@
-// PATCH /api/admin/orders/[id] — merchant status update.
-// Phase 1: no auth wall, tenant-scoped. Phase 2: gate by Supabase auth +
-// owner_phone check.
+// PATCH /api/admin/orders/[id] — owner-gated merchant status update. Only
+// the authenticated owner of the tenant that owns this order can mutate it.
 
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { resolveTenant } from '@/lib/api/tenant-api';
+import { requireOwnerOrThrow } from '@/lib/admin/auth';
 import { errorResponse, badRequest } from '@/lib/api/errors';
 import { createServiceClient } from '@/lib/supabase/service';
 
@@ -20,7 +19,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const parsed = patchSchema.safeParse(body);
     if (!parsed.success) return badRequest('Invalid status values');
 
-    const tenant = await resolveTenant();
+    const { tenant } = await requireOwnerOrThrow();
     const supabase = createServiceClient();
 
     const patch: Record<string, unknown> = { ...parsed.data };

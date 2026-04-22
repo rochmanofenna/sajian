@@ -49,6 +49,11 @@ interface CartState {
   setTableNumber: (n: string | null) => void;
   setDeliveryAddress: (a: string | null) => void;
   clear: () => void;
+  // Call from the tenant provider on mount: wipes the persisted cart if it
+  // was left behind from a different subdomain. Prevents the customer from
+  // carrying tenant A's items into tenant B's checkout after navigating
+  // directly across subdomains.
+  ensureTenantScope: (currentSlug: string) => void;
 
   getSubtotal: () => number;
   getItemCount: () => number;
@@ -105,6 +110,20 @@ export const useCart = create<CartState>()(
           deliveryAddress: null,
           items: [],
         }),
+
+      ensureTenantScope: (currentSlug) => {
+        const state = get();
+        if (state.tenantSlug && state.tenantSlug !== currentSlug) {
+          set({
+            tenantSlug: null,
+            branchCode: null,
+            orderType: null,
+            tableNumber: null,
+            deliveryAddress: null,
+            items: [],
+          });
+        }
+      },
 
       getSubtotal: () =>
         get().items.reduce((sum, item) => {

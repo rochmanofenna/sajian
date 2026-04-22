@@ -4,10 +4,14 @@
 // returned actions by calling admin APIs. After every mutation we
 // router.refresh() so server components (tenant settings, menu) re-evaluate
 // and reflect the change without a full page reload.
+//
+// Chat history is persisted to localStorage per-tenant so returning owners
+// see their previous conversation. Last 50 messages kept to keep context
+// small for the Claude call.
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Send, Sparkles } from 'lucide-react';
+import { Loader2, RotateCcw, Send, Sparkles } from 'lucide-react';
 import type { PublicTenant, ThemeTemplate } from '@/lib/tenant';
 import type { TenantColors } from '@/lib/onboarding/types';
 
@@ -21,7 +25,15 @@ type AdminAction =
       id: string;
       field: 'name' | 'price' | 'description' | 'is_available';
       value: string | number | boolean;
-    };
+    }
+  | {
+      type: 'add_item';
+      category_id: string;
+      name: string;
+      price: number;
+      description?: string;
+    }
+  | { type: 'remove_item'; id: string };
 
 interface Message {
   id: string;
@@ -33,8 +45,37 @@ interface Message {
 const STARTER = {
   role: 'assistant' as const,
   content:
-    'Halo! Gue siap bantu kelola toko kamu. Bilang aja apa yang mau diubah — menu, harga, warna, jam buka, layout.\n\nContoh: "Nasi goreng habis hari ini", "Naikin harga kopi susu jadi 30rb", "Ganti layout kayak warteg".',
+    'Halo! Gue siap bantu kelola toko kamu. Bilang aja apa yang mau diubah — menu, harga, warna, jam buka, layout.\n\nContoh: "Nasi goreng habis hari ini", "Naikin harga kopi susu jadi 30rb", "Tambahin es kopi susu 15rb ke minuman", "Ganti layout kayak warteg".',
 };
+
+const HISTORY_KEY = (tenantId: string) => `sajian-admin-chat-${tenantId}`;
+const MAX_HISTORY = 50;
+
+function loadHistory(tenantId: string): Message[] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY(tenantId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter(
+      (m): m is Message =>
+        m && typeof m === 'object' && typeof m.id === 'string' && (m.role === 'user' || m.role === 'assistant'),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function saveHistory(tenantId: string, messages: Message[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    const trimmed = messages.slice(-MAX_HISTORY);
+    localStorage.setItem(HISTORY_KEY(tenantId), JSON.stringify(trimmed));
+  } catch {
+    // localStorage full or unavailable — acceptable to silently skip.
+  }
+}
 
 export function AdminChat({
   tenant,
@@ -46,9 +87,11 @@ export function AdminChat({
   fill?: boolean;
 }) {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 'starter', ...STARTER, kind: 'text' },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const restored = typeof window !== 'undefined' ? loadHistory(tenant.id) : null;
+    if (restored && restored.length > 0) return restored;
+    return [{ id: 'starter', ...STARTER, kind: 'text' }];
+  });
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -57,6 +100,17 @@ export function AdminChat({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length, sending, applying]);
+
+  useEffect(() => {
+    saveHistory(tenant.id, messages);
+  }, [messages, tenant.id]);
+
+  function resetChat() {
+    if (!confirm('Mulai ulang chat? Riwayat sebelumnya akan dihapus.')) return;
+    const starter: Message = { id: 'starter', ...STARTER, kind: 'text' };
+    setMessages([starter]);
+    saveHistory(tenant.id, [starter]);
+  }
 
   async function applyAction(action: AdminAction): Promise<{ ok: boolean; note?: string }> {
     try {
@@ -70,6 +124,31 @@ export function AdminChat({
         });
         const body = await res.json();
         if (!res.ok) return { ok: false, note: body.error ?? 'menu edit gagal' };
+        return { ok: true };
+      }
+
+      if (action.type === 'add_item') {
+        const res = await fetch('/api/admin/menu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category_id: action.category_id,
+            name: action.name,
+            price: action.price,
+            description: action.description ?? null,
+          }),
+        });
+        const body = await res.json();
+        if (!res.ok) return { ok: false, note: body.error ?? 'tambah item gagal' };
+        return { ok: true };
+      }
+
+      if (action.type === 'remove_item') {
+        const res = await fetch(`/api/admin/menu/${action.id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          return { ok: false, note: body.error ?? 'hapus gagal' };
+        }
         return { ok: true };
       }
 
@@ -186,6 +265,15 @@ export function AdminChat({
         <Sparkles className="h-3.5 w-3.5" />
         <span className="font-medium uppercase tracking-[0.12em]">AI management</span>
         <span className="text-zinc-400 ml-auto hidden sm:inline">Perubahan langsung live</span>
+        <button
+          type="button"
+          onClick={resetChat}
+          title="Mulai ulang chat"
+          className="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-700 transition text-[11px]"
+        >
+          <RotateCcw className="h-3 w-3" />
+          Reset
+        </button>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">

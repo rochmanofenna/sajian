@@ -25,12 +25,14 @@ const colorsSchema = z
   .partial();
 
 const hoursDaySchema = z.object({
-  open: z.string(),
-  close: z.string(),
+  open: z.string().optional(),
+  close: z.string().optional(),
+  closed: z.boolean().optional(),
 });
 
 const patchSchema = z
   .object({
+    name: z.string().min(1).max(240).optional(),
     tagline: z.string().max(240).nullable().optional(),
     logo_url: z.string().url().nullable().optional(),
     hero_image_url: z.string().url().nullable().optional(),

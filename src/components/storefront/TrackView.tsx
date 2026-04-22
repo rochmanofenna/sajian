@@ -114,6 +114,16 @@ export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: 
     return `${mm}:${ss}`;
   }, [order?.payment_expires_at, now]);
 
+  // Local expiry fallback — if the QR deadline has been past for 5s and the
+  // webhook hasn't flipped the status yet, surface an inline warning so the
+  // customer isn't staring at a spinner indefinitely. The webhook will still
+  // catch up and flip payment_status to 'expired' when it arrives. Cheap to
+  // compute, no memoization needed.
+  const likelyExpiredLocally =
+    !!order?.payment_expires_at &&
+    order.payment_status === 'pending' &&
+    new Date(order.payment_expires_at).getTime() + 5000 < now;
+
   if (error) {
     return (
       <>
@@ -211,16 +221,28 @@ export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: 
             {countdown && (
               <div
                 className="inline-flex items-center gap-2 text-sm font-medium"
-                style={{ color: primary }}
+                style={{ color: likelyExpiredLocally ? '#b91c1c' : primary }}
               >
                 <Timer className="h-4 w-4" />
-                QR berlaku {countdown}
+                {likelyExpiredLocally ? 'QR kadaluarsa' : `QR berlaku ${countdown}`}
               </div>
             )}
-            <div className="text-xs text-zinc-500 flex items-center justify-center gap-2 pt-2">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Menunggu konfirmasi pembayaran…
-            </div>
+            {likelyExpiredLocally ? (
+              <div className="text-xs text-red-600 space-y-2">
+                <p>QR ini udah lewat masa berlakunya. Coba bikin pesanan ulang di menu.</p>
+                <Link
+                  href="/menu"
+                  className="inline-flex items-center gap-2 h-9 px-4 rounded-full bg-red-600 text-white text-xs"
+                >
+                  Kembali ke menu
+                </Link>
+              </div>
+            ) : (
+              <div className="text-xs text-zinc-500 flex items-center justify-center gap-2 pt-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Menunggu konfirmasi pembayaran…
+              </div>
+            )}
           </div>
         )}
 

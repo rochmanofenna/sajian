@@ -1,41 +1,46 @@
 'use client';
 
-// Email OTP signup for new restaurant owners. Supabase Auth email provider
-// sends a 6-digit code (and a magic link) to the entered email. We use the
-// 6-digit code so the flow stays on one page — no email-link round-trip.
+// Phone OTP signup for new restaurant owners. Supabase Auth phone provider
+// sends a 6-digit code via SMS (WhatsApp when configured) to the Indonesian
+// mobile number. Phone is more idiomatic than email for F&B owners in Jakarta.
 //
-// Why email instead of phone: Supabase's Phone provider now requires an SMS
-// vendor to be configured before it'll save, and Twilio onboarding is a
-// detour we don't need for dev. Phone OTP can swap in later without any
-// schema change (tenants.owner_user_id + owner_phone are populated from
-// whatever identity we end up using).
-//
-// After verification:
-//   • If this user already owns a tenant → nudge them toward it
-//   • Otherwise → /setup to start onboarding
+// Flow:
+//   1. Owner types 08xxx / +628xxx / 628xxx — we normalize to E.164 +62xxx
+//   2. signInWithOtp({ phone }) — SMS sent
+//   3. verifyOtp({ phone, token, type: 'sms' }) — session established
+//   4. If this user already owns a tenant → nudge to it; else → /setup
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { formatIdPhoneDisplay, isLikelyIdPhone, normalizeIdPhone } from '@/lib/auth/phone';
 
-type Stage = 'email' | 'otp';
+type Stage = 'phone' | 'otp';
 
 export default function SignupPage() {
   const router = useRouter();
   const supabase = createClient();
-  const [stage, setStage] = useState<Stage>('email');
-  const [email, setEmail] = useState('');
+  const [stage, setStage] = useState<Stage>('phone');
+  const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const canSend = isLikelyIdPhone(phone) && !loading;
+  const normalized = normalizeIdPhone(phone);
+  const display = formatIdPhoneDisplay(phone);
+
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!canSend) {
+      setError('Nomor HP tidak valid');
+      return;
+    }
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
+      phone: normalized,
       options: { shouldCreateUser: true },
     });
     setLoading(false);
@@ -51,9 +56,9 @@ export default function SignupPage() {
     setError(null);
     setLoading(true);
     const { data, error } = await supabase.auth.verifyOtp({
-      email: email.trim().toLowerCase(),
+      phone: normalized,
       token: otp,
-      type: 'email',
+      type: 'sms',
     });
     if (error || !data.user) {
       setLoading(false);
@@ -69,9 +74,6 @@ export default function SignupPage() {
 
     setLoading(false);
     if (existing?.slug) {
-      // No wildcard DNS on localhost, so just show the slug on the landing
-      // page for the dev to open via /etc/hosts. In prod this becomes a
-      // cross-subdomain redirect.
       router.push(`/?existing=${encodeURIComponent(existing.slug)}`);
     } else {
       router.push('/setup');
@@ -82,31 +84,35 @@ export default function SignupPage() {
     <div className="max-w-md mx-auto px-4 py-10">
       <h1 className="text-3xl font-semibold tracking-tight mb-2">Buat toko kamu</h1>
       <p className="text-zinc-600 mb-8">
-        Masuk dengan email. Cuma butuh 15 menit sampai restoran kamu online.
+        Masuk pakai nomor WhatsApp / HP. 15 menit sampai restoran kamu online.
       </p>
 
-      {stage === 'email' && (
+      {stage === 'phone' && (
         <form onSubmit={sendOtp} className="space-y-4">
           <label className="block">
-            <span className="text-sm text-zinc-700">Email</span>
+            <span className="text-sm text-zinc-700">Nomor WhatsApp</span>
             <input
-              type="email"
+              type="tel"
               required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="kamu@contoh.com"
+              autoComplete="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="0812 3456 7890"
               className="mt-1 w-full h-12 px-4 rounded-lg border border-[#1B5E3B]/20 bg-white"
             />
+            {display && (
+              <span className="mt-1 block text-xs text-zinc-500 font-mono">{display}</span>
+            )}
           </label>
 
           <button
             type="submit"
-            disabled={loading || email.length < 5}
+            disabled={!canSend}
             className="w-full h-12 rounded-full bg-[#1B5E3B] text-white font-medium disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            Kirim Kode
+            Kirim Kode via SMS
           </button>
         </form>
       )}
@@ -114,10 +120,10 @@ export default function SignupPage() {
       {stage === 'otp' && (
         <form onSubmit={verifyOtp} className="space-y-4">
           <div className="text-sm text-zinc-600">
-            Kode terkirim ke <span className="font-medium">{email}</span>.{' '}
+            Kode terkirim ke <span className="font-medium font-mono">{display || normalized}</span>.{' '}
             <button
               type="button"
-              onClick={() => setStage('email')}
+              onClick={() => setStage('phone')}
               className="underline text-[#1B5E3B]"
             >
               Ubah
@@ -132,7 +138,7 @@ export default function SignupPage() {
               required
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 10))}
-              placeholder="22489071"
+              placeholder="123456"
               className="mt-1 w-full h-12 px-4 rounded-lg border border-[#1B5E3B]/20 bg-white tracking-widest text-lg"
             />
           </label>
@@ -147,7 +153,8 @@ export default function SignupPage() {
           </button>
 
           <p className="text-xs text-zinc-500 pt-2">
-            Cek inbox (dan folder spam) — Supabase kirim email dengan kode 6 digit.
+            Cek SMS dari nomor resmi. Kalau gak dapet, kasih 1 menit lagi lalu
+            klik &ldquo;Ubah&rdquo; untuk kirim ulang.
           </p>
         </form>
       )}
