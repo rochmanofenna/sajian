@@ -84,8 +84,9 @@ export function slugFromHost(host: string | null | undefined): string | null {
   if (cleanHost === 'localhost' || cleanHost === '127.0.0.1') return null;
   if (ROOT_HOSTS.has(host.toLowerCase())) return null;
 
-  // Vercel previews: *.vercel.app with no subdomain → root
-  if (cleanHost.endsWith('.vercel.app') && cleanHost.split('.').length < 3) return null;
+  // Any *.vercel.app URL (preview or prod alias) → marketing.
+  // Tenants are only ever resolved from subdomains of sajian.app.
+  if (cleanHost.endsWith('.vercel.app')) return null;
 
   // Subdomain = first label. Works for mindiology.sajian.app AND mindiology.localhost.
   const first = cleanHost.split('.')[0];
