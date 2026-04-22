@@ -74,6 +74,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, ignored: true });
   }
 
+  // Xendit's dashboard "Test URL" sends reference_ids like "test-payload" that
+  // aren't UUIDs. Accept gracefully instead of letting Postgres 500 on cast.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(referenceId)) {
+    return NextResponse.json({ ok: true, ignored: true, reason: 'non-uuid reference_id' });
+  }
+
   const status = mapStatus(pickStatus(payload));
   if (!status) {
     console.info('[xendit-webhook] status not mapped, ignoring', {
