@@ -17,11 +17,12 @@ import { NextResponse } from 'next/server';
 import { resolveTenant } from '@/lib/api/tenant-api';
 import { errorResponse, badRequest } from '@/lib/api/errors';
 import { createServiceClient } from '@/lib/supabase/service';
-import { submitOrderSchema } from '@/lib/order/schema';
+import { submitOrderSchema, isDigital } from '@/lib/order/schema';
 import { toESBCashierPayload } from '@/lib/order/esb-mapper';
 import { ESBClient, visitPurposeFor } from '@/lib/esb/client';
 import type { ESBBranchSettings } from '@/lib/esb/types';
 import { sendWhatsApp } from '@/lib/notify/whatsapp';
+import { channelFor, checkoutUrl, createEWalletCharge, createQRIS } from '@/lib/payments/xendit';
 
 interface ESBCashierEnvelope {
   data?: { orderID?: string; qrData?: string; queueNum?: string };
@@ -36,10 +37,6 @@ export async function POST(req: Request) {
     const parsed = submitOrderSchema.safeParse(json);
     if (!parsed.success) return badRequest(parsed.error.issues.map((i) => i.message).join('; '));
     const body = parsed.data;
-
-    if (body.paymentMethod !== 'cashier') {
-      return badRequest('Only cashier payment is supported in Phase 1');
-    }
 
     const tenant = await resolveTenant();
     const supabase = createServiceClient();
@@ -167,7 +164,10 @@ export async function POST(req: Request) {
 
     // ── sajian_native path ────────────────────────────────────────────────
     // No external POS. Owner sees the order on /admin and manages it from
-    // there. No QR — customer shows the order number to the cashier.
+    // there. `cashier` = customer shows the order number to the cashier;
+    // `qris`/`dana`/etc = we create a Xendit payment and hand back the QR
+    // or checkout URL, then the Xendit webhook flips payment_status to
+    // 'paid' out-of-band.
     const { data: orderNumber } = await supabase.rpc('generate_order_number', {
       p_tenant_id: tenant.id,
       p_branch_code: body.branchCode,
@@ -187,7 +187,7 @@ export async function POST(req: Request) {
         order_type: body.orderType,
         table_number: body.tableNumber ?? null,
         delivery_address: body.deliveryAddress ?? null,
-        payment_method: 'cashier',
+        payment_method: body.paymentMethod,
         payment_status: 'pending',
         payment_qr_string: null,
         esb_order_id: null,
@@ -203,6 +203,69 @@ export async function POST(req: Request) {
     if (error) {
       console.error('[order/submit] native insert failed:', error);
       return NextResponse.json({ error: 'Gagal menyimpan pesanan' }, { status: 500 });
+    }
+
+    // Digital payment? Create Xendit payment + patch the order.
+    if (isDigital(body.paymentMethod)) {
+      try {
+        const host = req.headers.get('host') ?? 'sajian.app';
+        const proto = host.includes('localhost') ? 'http' : 'https';
+        const successUrl = `${proto}://${host}/track/${order.id}?paid=1`;
+        const failureUrl = `${proto}://${host}/track/${order.id}?paid=0`;
+
+        if (body.paymentMethod === 'qris') {
+          const qris = await createQRIS({
+            referenceId: order.id,
+            amount: subtotal,
+            expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          });
+          await supabase
+            .from('orders')
+            .update({
+              payment_qr_string: qris.qr_string,
+              payment_expires_at: qris.expires_at,
+            })
+            .eq('id', order.id);
+          return NextResponse.json({
+            orderId: order.id,
+            qrData: qris.qr_string,
+            paymentMethod: 'qris',
+            expiresAt: qris.expires_at,
+          });
+        }
+
+        // E-wallet
+        const channel = channelFor(body.paymentMethod as 'dana' | 'ovo' | 'shopeepay' | 'gopay');
+        const charge = await createEWalletCharge({
+          referenceId: order.id,
+          amount: subtotal,
+          channelCode: channel,
+          customerName: body.customerName,
+          customerPhone: body.customerPhone,
+          successRedirectUrl: successUrl,
+          failureRedirectUrl: failureUrl,
+        });
+        const redirect = checkoutUrl(charge);
+        await supabase
+          .from('orders')
+          .update({ payment_redirect_url: redirect })
+          .eq('id', order.id);
+        return NextResponse.json({
+          orderId: order.id,
+          paymentMethod: body.paymentMethod,
+          redirectUrl: redirect,
+        });
+      } catch (payErr) {
+        // Xendit failed — mark order and let customer retry via /track.
+        await supabase
+          .from('orders')
+          .update({ payment_status: 'failed' })
+          .eq('id', order.id);
+        return NextResponse.json(
+          { error: (payErr as Error).message, orderId: order.id },
+          { status: 502 },
+        );
+      }
     }
 
     sendWhatsApp({

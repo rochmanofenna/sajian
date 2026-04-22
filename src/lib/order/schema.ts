@@ -3,7 +3,21 @@
 import { z } from 'zod';
 
 export const orderTypeSchema = z.enum(['dine_in', 'takeaway', 'delivery']);
-export const paymentMethodSchema = z.enum(['cashier', 'dana', 'qris', 'ovo', 'gopay']);
+export const paymentMethodSchema = z.enum([
+  'cashier',
+  'qris',
+  'dana',
+  'ovo',
+  'shopeepay',
+  'gopay',
+]);
+export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
+
+// Digital methods routed through Xendit (everything except 'cashier').
+export const DIGITAL_METHODS = ['qris', 'dana', 'ovo', 'shopeepay', 'gopay'] as const;
+export function isDigital(m: PaymentMethod): boolean {
+  return (DIGITAL_METHODS as readonly string[]).includes(m);
+}
 
 export const cartModifierSchema = z.object({
   groupName: z.string(),
