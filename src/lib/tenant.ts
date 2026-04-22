@@ -11,6 +11,12 @@ import { createServiceClient } from './supabase/service';
 
 export type PosProvider = 'sajian_native' | 'esb';
 
+// Storefront layout presets. The AI onboarding picks one based on food type;
+// owners can override via chat ("buat lebih modern", "kayak kedai kopi", etc.).
+export type ThemeTemplate = 'kedai' | 'warung' | 'modern' | 'food-hall' | 'classic';
+
+export const THEME_TEMPLATES: ThemeTemplate[] = ['kedai', 'warung', 'modern', 'food-hall', 'classic'];
+
 export interface TenantTier {
   name: string;
   min: number;
@@ -69,6 +75,8 @@ export interface Tenant {
   is_active: boolean;
   owner_phone: string | null;
   owner_name: string | null;
+  theme_template: ThemeTemplate;
+  hero_image_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -100,6 +108,8 @@ export function toPublicTenant(t: Tenant): PublicTenant {
     operating_hours: t.operating_hours,
     subscription_tier: t.subscription_tier,
     is_active: t.is_active,
+    theme_template: t.theme_template,
+    hero_image_url: t.hero_image_url,
     created_at: t.created_at,
     updated_at: t.updated_at,
   };

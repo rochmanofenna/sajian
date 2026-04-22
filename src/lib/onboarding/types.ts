@@ -31,6 +31,8 @@ export interface TenantColors {
   dark: string;
 }
 
+export type ThemeTemplate = 'kedai' | 'warung' | 'modern' | 'food-hall' | 'classic';
+
 export interface TenantDraft {
   name?: string;
   slug?: string;
@@ -39,6 +41,8 @@ export interface TenantDraft {
   location?: string;
   colors?: TenantColors;
   logo_url?: string | null;
+  hero_image_url?: string | null;
+  theme_template?: ThemeTemplate;
   menu_categories?: CategoryDraft[];
   operating_hours?: Record<string, { open: string; close: string }>;
   pos_provider?: 'sajian_native' | 'esb';
@@ -72,4 +76,5 @@ export type OnboardingAction =
   | { type: 'remove_menu_item'; item: string }
   | { type: 'update_menu_item'; item: string; field: 'name' | 'price' | 'description'; value: string | number }
   | { type: 'generate_logo' }
+  | { type: 'set_template'; template: ThemeTemplate }
   | { type: 'ready_to_launch' };
