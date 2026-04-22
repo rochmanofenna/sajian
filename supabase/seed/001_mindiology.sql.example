@@ -1,0 +1,58 @@
+-- Mindiology Coffee seed — first tenant.
+-- Apply AFTER 001_initial_schema.sql.
+--
+-- Copy this file to 001_mindiology.sql (gitignored) and replace
+-- <<ESB_BEARER_TOKEN>> with the real value from your Kamarasan server's
+-- .env.production. The filled copy is local-only.
+
+insert into public.tenants (
+  slug, name, tagline,
+  colors, contact_email, support_whatsapp,
+  country_code, currency_symbol, locale, fallback_coords,
+  features, tiers, rewards,
+  pos_provider, pos_config,
+  owner_phone, owner_name,
+  subscription_tier, is_active
+) values (
+  'mindiology',
+  'Mindiology Coffee',
+  'Order your favorite coffee & food',
+  '{"primary": "#1B5E3B", "accent": "#C9A84C", "background": "#FDF6EC", "dark": "#1A1A18"}'::jsonb,
+  'hello@kamarasan.app',
+  null,
+  '+62', 'Rp ', 'id-ID',
+  '{"lat": -6.2788, "lng": 106.7142}'::jsonb,
+  '{"reservations": true, "delivery": true, "cashier_payment": true, "member_rewards": true, "ai_ordering": false}'::jsonb,
+  '[{"name": "Perunggu", "min": 0, "color": "#CD7F32", "emoji": "🥉"}, {"name": "Perak", "min": 200, "color": "#C0C0C0", "emoji": "🥈"}, {"name": "Emas", "min": 500, "color": "#D4A843", "emoji": "🥇"}]'::jsonb,
+  '[]'::jsonb,
+  'esb',
+  '{
+    "esb_company_code": "MBLA",
+    "esb_default_branch": "MCE",
+    "esb_bearer_token": "<<ESB_BEARER_TOKEN>>",
+    "esb_environment": "production"
+  }'::jsonb,
+  null,
+  'Ryan',
+  'pro',
+  true
+)
+on conflict (slug) do update set
+  pos_config = excluded.pos_config,
+  updated_at = now();
+
+-- Branches — codes match ESB branch codes exactly
+insert into public.branches (tenant_id, name, code, address, coords, supports_dine_in, supports_takeaway, sort_order)
+select
+  t.id,
+  b.name, b.code, b.address, b.coords::jsonb,
+  b.dine_in, b.takeaway, b.sort_order
+from public.tenants t
+cross join (values
+  ('Mindiology Coffee Emerald', 'MCE', 'Jl. Emerald Boulevard, Bintaro Jaya Sektor 9', '{"lat": -6.2788, "lng": 106.7142}', true, true, 0),
+  ('Mindiology Coffee Danareksa', 'MCEDR', 'Gedung Danareksa, Jakarta', '{"lat": -6.2146, "lng": 106.8451}', true, true, 1),
+  ('Sandwicherie Lakeside', 'SLE', 'Lakeside, Bintaro', '{"lat": -6.2820, "lng": 106.7180}', true, true, 2),
+  ('Kamarasan Citra Garden', 'KCG', 'Citra Garden, Jakarta Barat', '{"lat": -6.1500, "lng": 106.7000}', false, true, 3)
+) as b(name, code, address, coords, dine_in, takeaway, sort_order)
+where t.slug = 'mindiology'
+on conflict (tenant_id, code) do nothing;
