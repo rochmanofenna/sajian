@@ -12,6 +12,7 @@ import { getTemplate } from './templates';
 import { useMenuData } from './templates/useMenuData';
 import { PageNav } from '@/components/chrome/PageNav';
 import { CartChip } from '@/components/chrome/CartChip';
+import { MenuOverlay } from './MenuOverlay';
 
 export function MenuView({ tenant }: { tenant: PublicTenant }) {
   const data = useMenuData(tenant);
@@ -41,6 +42,7 @@ export function MenuView({ tenant }: { tenant: PublicTenant }) {
         caption={tenant.name}
         trailing={<CartChip tenant={tenant} />}
       />
+      <MenuOverlay tenant={tenant} sections={data.sections} />
       <Menu tenant={tenant} {...data} />
     </>
   );

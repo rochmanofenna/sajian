@@ -56,7 +56,7 @@ export function KedaiMenu({
       {!loading && !error && sections.length > 0 && (
         <div className="tk-kedai-menu__body">
           {sections.map((s) => (
-            <section key={s.key} className="tk-kedai-menu__section">
+            <section key={s.key} id={`cat-${s.key}`} className="tk-kedai-menu__section">
               <header className="tk-kedai-menu__head">
                 <div className="tk-kedai-menu__kicker">{s.categoryName}</div>
                 <h2 className="tk-kedai-menu__title" style={{ color: primary }}>

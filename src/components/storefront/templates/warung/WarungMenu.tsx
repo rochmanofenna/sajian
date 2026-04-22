@@ -53,7 +53,7 @@ export function WarungMenu({
       {error && <div className="tk-warung-menu__error">{error}</div>}
 
       {!loading && !error && sections.map((s) => (
-        <section key={s.key} className="tk-warung-menu__section">
+        <section key={s.key} id={`cat-${s.key}`} className="tk-warung-menu__section">
           <header
             className="tk-warung-menu__bar"
             style={{ background: primary, color: background }}

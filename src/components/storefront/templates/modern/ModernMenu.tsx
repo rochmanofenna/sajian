@@ -51,7 +51,7 @@ export function ModernMenu({
       {error && <div className="tk-modern-menu__error">{error}</div>}
 
       {!loading && !error && sections.map((s) => (
-        <section key={s.key} className="tk-modern-menu__section">
+        <section key={s.key} id={`cat-${s.key}`} className="tk-modern-menu__section">
           <header className="tk-modern-menu__head">
             <div className="tk-modern-menu__kicker">{s.categoryName}</div>
             <h2 className="tk-modern-menu__title">{s.subName}</h2>

@@ -86,6 +86,7 @@ export function FoodHallMenu({
       {!loading && !error && sections.map((s) => (
         <section
           key={s.key}
+          id={`cat-${s.key}`}
           className="tk-fh-menu__section"
           ref={(el) => {
             sectionRefs.current[s.key] = el;

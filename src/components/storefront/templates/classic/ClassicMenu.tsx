@@ -52,7 +52,7 @@ export function ClassicMenu({
       {error && <div className="tk-classic-menu__error">{error}</div>}
 
       {!loading && !error && sections.map((s) => (
-        <section key={s.key} className="tk-classic-menu__section">
+        <section key={s.key} id={`cat-${s.key}`} className="tk-classic-menu__section">
           <header className="tk-classic-menu__head">
             <div className="tk-classic-menu__divider" style={{ borderColor: primary }} />
             <h2 className="tk-classic-menu__title" style={{ color: primary }}>
