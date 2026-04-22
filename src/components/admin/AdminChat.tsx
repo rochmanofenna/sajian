@@ -5,9 +5,10 @@
 // router.refresh() so server components (tenant settings, menu) re-evaluate
 // and reflect the change without a full page reload.
 //
-// Chat history is persisted to localStorage per-tenant so returning owners
-// see their previous conversation. Last 50 messages kept to keep context
-// small for the Claude call.
+// History is persisted to Supabase (admin_chat_history table) as the source
+// of truth — survives browser clears and device swaps. localStorage is used
+// as a fast first-paint cache; we reconcile against the server on mount and
+// overwrite the cache if the server has a newer transcript.
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -51,7 +52,7 @@ const STARTER = {
 const HISTORY_KEY = (tenantId: string) => `sajian-admin-chat-${tenantId}`;
 const MAX_HISTORY = 50;
 
-function loadHistory(tenantId: string): Message[] | null {
+function loadCache(tenantId: string): Message[] | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(HISTORY_KEY(tenantId));
@@ -67,13 +68,29 @@ function loadHistory(tenantId: string): Message[] | null {
   }
 }
 
-function saveHistory(tenantId: string, messages: Message[]) {
+function writeCache(tenantId: string, messages: Message[]) {
   if (typeof window === 'undefined') return;
   try {
     const trimmed = messages.slice(-MAX_HISTORY);
     localStorage.setItem(HISTORY_KEY(tenantId), JSON.stringify(trimmed));
   } catch {
-    // localStorage full or unavailable — acceptable to silently skip.
+    // localStorage full or unavailable — the server copy is the source of
+    // truth, so the cache miss is harmless on the next load.
+  }
+}
+
+// Persist to Supabase — debounced so rapid mutation bursts (e.g. AI emitting
+// multiple messages in a turn) coalesce into a single PUT.
+async function writeRemote(messages: Message[]) {
+  try {
+    await fetch('/api/admin/chat/history', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: messages.slice(-MAX_HISTORY) }),
+    });
+  } catch {
+    // Network flake — the next successful write catches up. Local cache
+    // keeps the UX consistent until then.
   }
 }
 
@@ -88,28 +105,68 @@ export function AdminChat({
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(() => {
-    const restored = typeof window !== 'undefined' ? loadHistory(tenant.id) : null;
-    if (restored && restored.length > 0) return restored;
+    // First paint = cache. The mount effect below reconciles against the
+    // server and overwrites this if the server has something different.
+    const cached = typeof window !== 'undefined' ? loadCache(tenant.id) : null;
+    if (cached && cached.length > 0) return cached;
     return [{ id: 'starter', ...STARTER, kind: 'text' }];
   });
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [applying, setApplying] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const remoteDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length, sending, applying]);
 
+  // Reconcile with Supabase once on mount. If the remote copy has at least
+  // one real (non-starter) message, trust the server — otherwise keep what
+  // we loaded from cache (may be a fresh session).
   useEffect(() => {
-    saveHistory(tenant.id, messages);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/chat/history', { cache: 'no-store' });
+        if (!res.ok) return;
+        const body = (await res.json()) as { messages?: Message[] };
+        const remote = Array.isArray(body.messages) ? body.messages : [];
+        if (cancelled) return;
+        if (remote.length > 0) {
+          setMessages(remote);
+          writeCache(tenant.id, remote);
+        }
+      } catch {
+        // Offline or error — stay on cached view.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenant.id]);
+
+  // Persist every change: cache immediately (fast), server debounced (cheap).
+  useEffect(() => {
+    writeCache(tenant.id, messages);
+    if (remoteDebounce.current) clearTimeout(remoteDebounce.current);
+    remoteDebounce.current = setTimeout(() => writeRemote(messages), 600);
+    return () => {
+      if (remoteDebounce.current) clearTimeout(remoteDebounce.current);
+    };
   }, [messages, tenant.id]);
 
-  function resetChat() {
+  async function resetChat() {
     if (!confirm('Mulai ulang chat? Riwayat sebelumnya akan dihapus.')) return;
     const starter: Message = { id: 'starter', ...STARTER, kind: 'text' };
     setMessages([starter]);
-    saveHistory(tenant.id, [starter]);
+    writeCache(tenant.id, [starter]);
+    try {
+      await fetch('/api/admin/chat/history', { method: 'DELETE' });
+    } catch {
+      // Server sync failure is non-fatal — the reset will be replayed by
+      // the debounced write when the next message goes out.
+    }
   }
 
   async function applyAction(action: AdminAction): Promise<{ ok: boolean; note?: string }> {
