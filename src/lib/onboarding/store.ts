@@ -40,6 +40,20 @@ interface OnboardingState {
   setError: (e: string | null) => void;
 }
 
+// Persisted chat messages from before the sharp/timeout extract-menu fix
+// sometimes contain raw browser errors ("JSON.parse: unexpected character at
+// line 1 column 1 of the JSON data") — strip those on load so the owner sees
+// a clean conversation.
+function isSystemErrorMessage(m: ChatMessage): boolean {
+  if (!m || typeof m.content !== 'string') return false;
+  const text = m.content.toLowerCase();
+  return (
+    text.includes('json.parse') ||
+    text.includes('unexpected character at line') ||
+    text.includes('unexpected token') && text.includes('json')
+  );
+}
+
 // Debounced persistence — we fire-and-forget the upsert. A user who backs
 // out mid-edit won't corrupt anything because each field is set in full.
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -75,7 +89,12 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
       .eq('user_id', userId)
       .maybeSingle();
 
-    const saved = (data?.messages as ChatMessage[] | null) ?? [];
+    const rawSaved = (data?.messages as ChatMessage[] | null) ?? [];
+    // Strip historical system errors — "JSON.parse: unexpected character…"
+    // bubbles from failed uploads before the sharp/timeout fix shipped.
+    // These aren't real conversation turns, so rendering them forever would
+    // just confuse the owner.
+    const saved = rawSaved.filter((m) => !isSystemErrorMessage(m));
     const messages =
       saved.length > 0
         ? saved
@@ -97,6 +116,11 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
       draft: (data?.draft as TenantDraft) ?? {},
       messages,
     });
+    // If we filtered out stale error bubbles, persist the cleaned list so
+    // they don't come back on the next load.
+    if (rawSaved.length !== saved.length) {
+      persist(get());
+    }
   },
 
   setStep: (step) => {

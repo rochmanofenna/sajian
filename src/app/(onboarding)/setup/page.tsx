@@ -94,12 +94,20 @@ export default function SetupPage() {
         const seeded = await seedDraftFromLiveTenant();
         if (seeded) {
           await useOnboarding.getState().patchDraft(seeded.draft);
-          // If the only message is the fresh-onboarding greeting, swap it
-          // for a re-setup greeting that knows the store is already live.
+          // Swap the greeting when either:
+          //   · it's the fresh-onboarding default (id='greeting'), OR
+          //   · it's a stale resetup greeting saved from a previous visit
+          //     that reported "0 menu di 0 kategori" while the seed now has
+          //     real counts — persisted numbers must never lag reality.
           const messages = useOnboarding.getState().messages;
           const onlyDefaultGreeting =
             messages.length === 1 && messages[0].id === 'greeting';
-          if (onlyDefaultGreeting) {
+          const onlyStaleResetupGreeting =
+            messages.length === 1 &&
+            messages[0].id === 'resetup-greeting' &&
+            /0 menu di 0 kategori/.test(messages[0].content) &&
+            seeded.stats.items > 0;
+          if (onlyDefaultGreeting || onlyStaleResetupGreeting) {
             const { categories, items } = seeded.stats;
             const esbLine =
               seeded.source === 'esb'
