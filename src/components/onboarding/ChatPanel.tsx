@@ -42,6 +42,21 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
   }, [messages.length]);
 
   async function applyAction(action: OnboardingAction) {
+    // Menu mutations are unavailable for ESB tenants — the authoritative
+    // menu lives in ESB, so a local draft edit would never persist and would
+    // only confuse the owner. Refuse with a clear message.
+    const isEsb = draft.pos_provider === 'esb';
+    const menuMutations = new Set(['add_menu_item', 'remove_menu_item', 'update_menu_item']);
+    if (isEsb && menuMutations.has(action.type)) {
+      await pushMessage({
+        role: 'assistant',
+        content:
+          'Menu disinkronisasi dari ESB — perubahan ini perlu dilakukan di portal ESB ya.',
+        kind: 'text',
+      });
+      return;
+    }
+
     switch (action.type) {
       case 'update_name':
         await patchDraft({ name: action.name, slug: generateSlug(action.name) });

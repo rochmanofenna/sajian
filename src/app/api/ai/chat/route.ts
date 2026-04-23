@@ -48,12 +48,23 @@ function menuSummary(draft: TenantDraft): string {
 
 const SYSTEM = (draft: TenantDraft) => {
   const reSetup = isReSetupMode(draft);
+  const isEsb = draft.pos_provider === 'esb';
   const header = reSetup
-    ? `You are Sajian's management assistant. The owner already launched their store — they're back in /setup to make CHANGES to their live menu / branding / layout. Do NOT ask for basics that already exist (name, food type, etc.).`
+    ? isEsb
+      ? `You are Sajian's management assistant. The owner already launched their store — they're back in /setup to make CHANGES. Their menu is synced from ESB POS, so you CANNOT change menu items, prices, or availability from here — those edits must be done in the ESB portal. You CAN change tagline, colors, theme template, logo, hero image, and operating hours.`
+      : `You are Sajian's management assistant. The owner already launched their store — they're back in /setup to make CHANGES to their live menu / branding / layout. Do NOT ask for basics that already exist (name, food type, etc.).`
     : `You are Sajian's onboarding assistant helping an Indonesian restaurant owner set up their online ordering page.`;
 
   const goals = reSetup
-    ? `Your goals:
+    ? isEsb
+      ? `Your goals:
+1. The store already exists and its menu is synced from ESB. You CANNOT modify menu items, prices, or availability — refuse any such request with:
+   "Menu kamu disinkronisasi dari ESB — untuk ubah harga atau availability, silakan update di portal ESB ya. Di sini kamu bisa ubah warna, logo, tagline, jam buka, dan layout."
+2. ALLOWED changes: tagline, colors (update_colors), theme template (set_template), operating hours (update_hours), logo (generate_logo).
+3. ASK for clarification when a request is ambiguous.
+4. When the owner says "udah cukup" or "save dong" or "publish", emit ready_to_launch — the UI will commit allowed changes to the live tenant.
+5. Do NOT emit add_menu_item, remove_menu_item, or update_menu_item — those actions are unavailable for ESB tenants. Explain and redirect the owner to ESB portal instead.`
+      : `Your goals:
 1. The store already exists. Treat every user message as a change request against the current draft.
 2. ASK for clarification when a request is ambiguous — never guess which item they mean when multiple match.
 3. Emit action markers for every concrete change. Prices, availability, name edits, color tweaks, template swaps, menu additions/removals are all fair game.
@@ -134,6 +145,15 @@ function parseActions(text: string): OnboardingAction[] {
   return out;
 }
 
+// Menu-mutation actions that are meaningless for ESB tenants (ESB owns the
+// authoritative menu). The prompt already instructs the model not to emit
+// these, but we strip them server-side as a belt-and-suspenders guard.
+const ESB_FORBIDDEN_ACTIONS = new Set([
+  'add_menu_item',
+  'remove_menu_item',
+  'update_menu_item',
+]);
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as ChatReq;
@@ -141,17 +161,27 @@ export async function POST(req: Request) {
       return badRequest('messages required');
     }
 
+    const draft = body.draft ?? {};
     const anthropic = getAnthropic();
     const res = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 1024,
-      system: SYSTEM(body.draft ?? {}),
+      system: SYSTEM(draft),
       messages: body.messages.map((m) => ({ role: m.role, content: m.content })),
     });
 
     const text = res.content[0].type === 'text' ? res.content[0].text : '';
-    const actions = parseActions(text);
-    const clean = text.replace(/<!--ACTION:[\s\S]*?-->/g, '').trim();
+    let actions = parseActions(text);
+    let clean = text.replace(/<!--ACTION:[\s\S]*?-->/g, '').trim();
+
+    if (draft.pos_provider === 'esb') {
+      const blocked = actions.filter((a) => ESB_FORBIDDEN_ACTIONS.has(a.type));
+      if (blocked.length > 0) {
+        actions = actions.filter((a) => !ESB_FORBIDDEN_ACTIONS.has(a.type));
+        clean =
+          `${clean}\n\n_Menu kamu disinkronisasi dari ESB — edit harga/availability di portal ESB ya._`.trim();
+      }
+    }
 
     return NextResponse.json({ message: clean, actions });
   } catch (err) {
