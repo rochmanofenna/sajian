@@ -135,12 +135,16 @@ function ItemRow({
   const unavailable = item.is_available === false;
   return (
     <li
-      className="flex items-start gap-3 p-3 rounded-xl bg-white border"
+      className="flex items-start gap-2.5 p-2.5 rounded-xl bg-white border"
       style={{
         borderColor: `${colors.primary}15`,
         opacity: unavailable ? 0.55 : 1,
       }}
     >
+      {/* Always render a thumbnail slot so every row has the same column
+          geometry — items with images get a thumbnail, items without get a
+          tinted placeholder the same size. Keeps the name + price aligned
+          down the whole list. */}
       {item.image_url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -148,13 +152,21 @@ function ItemRow({
           alt=""
           className="h-14 w-14 rounded-lg object-cover flex-shrink-0"
         />
-      ) : null}
+      ) : (
+        <div
+          className="h-14 w-14 rounded-lg flex-shrink-0"
+          style={{ background: `${colors.primary}10` }}
+          aria-hidden="true"
+        />
+      )}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <div className="font-medium">{item.name}</div>
+        <div className="flex items-start gap-1.5">
+          <div className="font-medium text-sm leading-tight break-words flex-1 min-w-0">
+            {item.name}
+          </div>
           {unavailable && (
             <span
-              className="text-[10px] uppercase tracking-wide px-1.5 rounded-full"
+              className="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full flex-shrink-0"
               style={{ background: `${colors.dark}14`, color: colors.dark }}
             >
               Habis
@@ -162,7 +174,9 @@ function ItemRow({
           )}
         </div>
         {item.description && (
-          <div className="text-xs opacity-60 line-clamp-2 mt-0.5">{item.description}</div>
+          <div className="text-[11px] opacity-60 line-clamp-2 mt-0.5 leading-snug break-words">
+            {item.description}
+          </div>
         )}
         <div
           className="mt-1 text-sm font-semibold"
