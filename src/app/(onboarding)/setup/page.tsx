@@ -20,7 +20,14 @@ type DeviceMode = 'phone' | 'desktop';
 // silently filtering menu items (`is_available=false` rows and nested embed
 // edge cases returned empty arrays), so we fetch through a server route that
 // uses the service client after verifying ownership via the auth cookie.
-async function seedDraftFromLiveTenant(): Promise<TenantDraft | null> {
+interface SeedResult {
+  draft: TenantDraft;
+  source: 'esb' | 'native';
+  stats: { categories: number; items: number };
+  esbWarning: string | null;
+}
+
+async function seedDraftFromLiveTenant(): Promise<SeedResult | null> {
   const host = window.location.hostname;
   const sub = host.split(':')[0].split('.')[0];
   if (!sub || sub === 'sajian' || sub === 'www' || sub === 'localhost') return null;
@@ -35,8 +42,9 @@ async function seedDraftFromLiveTenant(): Promise<TenantDraft | null> {
       // domain falls through to the fresh-onboarding flow.
       return null;
     }
-    const body = (await res.json()) as { draft?: TenantDraft };
-    return body.draft ?? null;
+    const body = (await res.json()) as SeedResult;
+    if (!body.draft) return null;
+    return body;
   } catch {
     return null;
   }
@@ -85,23 +93,32 @@ export default function SetupPage() {
       if (draftIsStale) {
         const seeded = await seedDraftFromLiveTenant();
         if (seeded) {
-          await useOnboarding.getState().patchDraft(seeded);
+          await useOnboarding.getState().patchDraft(seeded.draft);
           // If the only message is the fresh-onboarding greeting, swap it
           // for a re-setup greeting that knows the store is already live.
           const messages = useOnboarding.getState().messages;
           const onlyDefaultGreeting =
             messages.length === 1 && messages[0].id === 'greeting';
           if (onlyDefaultGreeting) {
-            const itemCount =
-              seeded.menu_categories?.reduce((n, c) => n + c.items.length, 0) ?? 0;
-            const catCount = seeded.menu_categories?.length ?? 0;
+            const { categories, items } = seeded.stats;
+            const esbLine =
+              seeded.source === 'esb'
+                ? `\n\n_Menu kamu disinkronisasi dari ESB — ganti harga/availability di portal ESB. Di sini kamu bisa ubah warna, logo, tagline, jam buka, dan layout._`
+                : '';
+            const warningLine = seeded.esbWarning
+              ? `\n\n⚠️ ${seeded.esbWarning}`
+              : '';
+            const changeExamples =
+              seeded.source === 'esb'
+                ? `• "Warna primary lebih gelap"\n• "Ganti tagline jadi X"\n• "Jam buka senin 8 pagi"\n• "Ganti layout kayak kedai"`
+                : `• "Naikin harga nasi goreng jadi 30rb"\n• "Tambah es kopi susu 15rb ke minuman"\n• "Warna primary lebih gelap"\n• "Hapus kategori snack"`;
             await useOnboarding.getState().setMessages([
               {
                 id: 'resetup-greeting',
                 role: 'assistant',
                 kind: 'text',
                 createdAt: Date.now(),
-                content: `Halo lagi! 👋 Tokomu **${seeded.name}** udah online — ${itemCount} menu di ${catCount} kategori.\n\nMau ubah apa? Contoh:\n• "Naikin harga nasi goreng jadi 30rb"\n• "Tambah es kopi susu 15rb ke minuman"\n• "Warna primary lebih gelap"\n• "Hapus kategori snack"`,
+                content: `Halo lagi! 👋 Tokomu **${seeded.draft.name}** udah online — ${items} menu di ${categories} kategori.${esbLine}${warningLine}\n\nMau ubah apa? Contoh:\n${changeExamples}`,
               },
             ]);
           }

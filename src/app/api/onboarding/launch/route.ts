@@ -55,6 +55,16 @@ export async function POST() {
       .maybeSingle();
 
     if (existing) {
+      // Fetch the existing tenant's pos_provider so we know whether to touch
+      // menu_categories. ESB tenants keep their menu in the ESB API — if we
+      // delete + re-insert local rows we create shadow data that diverges
+      // from ESB and breaks the storefront/menu editor.
+      const { data: existingTenant } = await service
+        .from('tenants')
+        .select('pos_provider')
+        .eq('id', existing.id)
+        .maybeSingle();
+
       const tenantUpdate: Record<string, unknown> = {
         name: payload.name,
         tagline: payload.tagline ?? null,
@@ -70,39 +80,43 @@ export async function POST() {
         .eq('id', existing.id);
       if (updateErr) throw updateErr;
 
-      // Replace menu: delete-then-insert is simplest and safe under service role.
-      const { error: delErr } = await service
-        .from('menu_categories')
-        .delete()
-        .eq('tenant_id', existing.id);
-      if (delErr) throw delErr;
-
-      let catIdx = 0;
-      for (const cat of payload.menu_categories ?? []) {
-        const { data: insertedCat, error: catErr } = await service
+      const isEsb = existingTenant?.pos_provider === 'esb';
+      if (!isEsb) {
+        // Native tenant — replace menu. Delete-then-insert is simplest and
+        // safe under service role.
+        const { error: delErr } = await service
           .from('menu_categories')
-          .insert({
-            tenant_id: existing.id,
-            name: cat.name,
-            sort_order: catIdx++,
-            is_active: true,
-          })
-          .select('id')
-          .single();
-        if (catErr) throw catErr;
+          .delete()
+          .eq('tenant_id', existing.id);
+        if (delErr) throw delErr;
 
-        let itemIdx = 0;
-        for (const item of cat.items) {
-          const { error: itemErr } = await service.from('menu_items').insert({
-            tenant_id: existing.id,
-            category_id: insertedCat.id,
-            name: item.name,
-            price: item.price,
-            description: item.description ?? null,
-            sort_order: itemIdx++,
-            is_available: true,
-          });
-          if (itemErr) throw itemErr;
+        let catIdx = 0;
+        for (const cat of payload.menu_categories ?? []) {
+          const { data: insertedCat, error: catErr } = await service
+            .from('menu_categories')
+            .insert({
+              tenant_id: existing.id,
+              name: cat.name,
+              sort_order: catIdx++,
+              is_active: true,
+            })
+            .select('id')
+            .single();
+          if (catErr) throw catErr;
+
+          let itemIdx = 0;
+          for (const item of cat.items) {
+            const { error: itemErr } = await service.from('menu_items').insert({
+              tenant_id: existing.id,
+              category_id: insertedCat.id,
+              name: item.name,
+              price: item.price,
+              description: item.description ?? null,
+              sort_order: itemIdx++,
+              is_available: true,
+            });
+            if (itemErr) throw itemErr;
+          }
         }
       }
 
@@ -110,6 +124,7 @@ export async function POST() {
         tenant_id: existing.id,
         slug: existing.slug,
         updated: true,
+        menu_skipped: isEsb,
       });
     }
 
