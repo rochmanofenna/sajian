@@ -56,14 +56,27 @@ export interface TenantDraft {
 
 export type ChatRole = 'user' | 'assistant';
 
+// Attachments shown inline inside a bubble. Images carry a compressed
+// thumbnail data URL so reloads still show what was uploaded. PDFs carry
+// metadata only — embedding the binary would balloon the onboarding_drafts
+// row — the bubble renders a file card instead.
+export interface ChatAttachment {
+  type: 'image' | 'pdf';
+  url?: string;
+  name?: string;
+  size?: number;
+  mime?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
   // Plain text. Rich payloads (extracted menu, color swatches, logo picks)
   // live in `kind` + `payload` so the renderer knows what to show.
   content: string;
-  kind?: 'text' | 'menu_extracted' | 'colors_extracted' | 'logo_options' | 'photo_prompt' | 'launch_ready';
+  kind?: 'text' | 'menu_extracted' | 'colors_extracted' | 'logo_uploaded' | 'logo_options' | 'photo_prompt' | 'launch_ready';
   payload?: unknown;
+  attachments?: ChatAttachment[];
   createdAt: number;
 }
 

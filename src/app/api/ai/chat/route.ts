@@ -83,7 +83,7 @@ const SYSTEM = (draft: TenantDraft) => {
 
   return `${header}
 
-Speak casual, friendly Bahasa Indonesia (like chatting with a friend — not formal). Keep replies short: 1–3 sentences.
+Speak casual, friendly Bahasa Indonesia (like chatting with a friend — not formal). Keep replies short: 1–3 sentences. Do NOT use emojis or decorative symbols — the UI is editorial and emojis read as tacky. Plain text only.
 
 Current draft state:
 \`\`\`json

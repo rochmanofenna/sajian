@@ -114,7 +114,7 @@ export default function SetupPage() {
                 ? `\n\n_Menu kamu disinkronisasi dari ESB — ganti harga/availability di portal ESB. Di sini kamu bisa ubah warna, logo, tagline, jam buka, dan layout._`
                 : '';
             const warningLine = seeded.esbWarning
-              ? `\n\n⚠️ ${seeded.esbWarning}`
+              ? `\n\nCatatan: ${seeded.esbWarning}`
               : '';
             const changeExamples =
               seeded.source === 'esb'
@@ -126,7 +126,7 @@ export default function SetupPage() {
                 role: 'assistant',
                 kind: 'text',
                 createdAt: Date.now(),
-                content: `Halo lagi! 👋 Tokomu **${seeded.draft.name}** udah online — ${items} menu di ${categories} kategori.${esbLine}${warningLine}\n\nMau ubah apa? Contoh:\n${changeExamples}`,
+                content: `Halo lagi. Tokomu **${seeded.draft.name}** udah online — ${items} menu di ${categories} kategori.${esbLine}${warningLine}\n\nMau ubah apa? Contoh:\n${changeExamples}`,
               },
             ]);
           }

@@ -98,7 +98,10 @@
 }
 @media (min-width: 960px) {
   .ob-grid {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    /* Preview side gets more weight than the chat — a generous phone frame
+       sells the "this is what my customers see" moment better than a wider
+       chat column. */
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   }
 }
 
@@ -158,8 +161,8 @@
 }
 .ob-panel__uploads {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 .ob-panel__compose { display: flex; gap: 8px; }
 .ob-panel__input {
@@ -253,10 +256,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 14px 10px;
+  gap: 4px;
+  padding: 10px 8px;
   border: 1.5px dashed rgba(10, 11, 10, 0.18);
-  border-radius: 14px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.55);
   cursor: pointer;
   transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
@@ -278,10 +281,85 @@
 }
 .ob-upload__hint {
   font-family: var(--ob-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ob-ink-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* ── Inline chat attachments ─────────────────────────────────────────── */
+
+.ob-bubble[data-media-only] {
+  padding: 6px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.ob-bubble[data-media-only].ob-bubble--user { background: transparent; color: inherit; }
+
+.ob-bubble__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ob-bubble__attachments--below { margin-top: 10px; }
+
+.ob-attach {
+  display: inline-flex;
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(10, 11, 10, 0.1);
+}
+.ob-attach[data-mine] {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.ob-attach--image {
+  padding: 0;
+  max-width: 220px;
+}
+.ob-attach--image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+  object-fit: cover;
+}
+.ob-attach--file {
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  min-width: 180px;
+  max-width: 260px;
+  color: var(--ob-ink);
+}
+.ob-attach--file[data-mine] {
+  color: var(--ob-paper);
+}
+.ob-attach__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ob-attach__name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ob-attach__sub {
+  font-family: var(--ob-mono);
   font-size: 9.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ob-ink-mute);
+  opacity: 0.7;
 }
 
 /* ── Preview pane ────────────────────────────────────────────────────── */
@@ -290,8 +368,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
-  padding: 32px 24px 48px;
+  gap: 14px;
+  padding: 20px 14px 28px;
   min-height: 0;
   background: radial-gradient(circle at 50% 0%, rgba(184, 115, 46, 0.08), transparent 55%), var(--ob-paper-deep);
 }
@@ -367,24 +445,28 @@
   transition: width 0.35s ease, border-radius 0.35s ease, padding 0.35s ease;
 }
 
-/* Phone variant — slim speaker slit inside the top bezel, no notch overlap. */
+/* Phone variant — the screen dominates, the bezel is a thin rim. Width is
+   driven by available height so the phone fills the preview pane top-to-
+   bottom on laptop screens; `min()` keeps it from exceeding the pane width
+   on ultrawide layouts. Bezel padding is intentionally tiny so the render
+   looks like a modern edge-to-edge phone, not a chunky 2015 case. */
 .ob-device--phone {
-  width: min(340px, 92%);
+  width: min(calc(92svh * 9 / 19), 560px, 96%);
   aspect-ratio: 9 / 19;
-  max-height: 82vh;
-  border-radius: 44px;
-  padding: 14px 10px 10px;
+  max-height: 92svh;
+  border-radius: 46px;
+  padding: 8px 6px 6px;
 }
 .ob-device--phone .ob-device__frame {
-  border-radius: 32px;
-  height: calc(100% - 4px);
+  border-radius: 40px;
+  height: calc(100% - 2px);
 }
 .ob-device__speaker {
   position: absolute;
-  top: 6px;
+  top: 4px;
   left: 50%;
   transform: translateX(-50%);
-  width: 44px;
+  width: 40px;
   height: 3px;
   background: #0a0a08;
   border-radius: 999px;
@@ -458,7 +540,7 @@
   color: var(--ob-forest);
   z-index: 4;
 }
-.ob-device--phone .ob-device__launching { inset: 10px; border-radius: 32px; }
+.ob-device--phone .ob-device__launching { inset: 6px; border-radius: 40px; }
 .ob-device--desktop .ob-device__launching { inset: 34px 0 0 0; border-radius: 0 0 14px 14px; }
 .ob-device__error {
   position: absolute;
@@ -528,11 +610,11 @@
 }
 
 @media (max-width: 720px) {
-  .ob-preview { padding: 20px 14px 28px; }
-  .ob-device--phone { width: min(300px, 92%); max-height: 70vh; }
+  .ob-preview { padding: 16px 12px 24px; }
+  .ob-device--phone { width: min(calc(70vh * 9 / 19), 340px, 92%); max-height: 70vh; }
   .ob-device--desktop { width: 100%; aspect-ratio: 4 / 3; max-height: 60vh; }
   .ob-chat__kicker { display: none; }
-  .ob-panel__uploads { grid-template-columns: 1fr; }
+  .ob-panel__uploads { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 }
 
 /* Defaults for the root domain (sajian.app). Tenants override via inline style

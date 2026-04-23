@@ -3,18 +3,21 @@
 // The left-side conversation pane. Wires:
 //   • message list ↔ useOnboarding.messages
 //   • text input → /api/ai/chat
-//   • menu upload button → /api/ai/extract-menu
+//   • menu upload → /api/ai/extract-menu
 //   • storefront photo → /api/ai/extract-colors
+//   • logo upload → /api/onboarding/upload-logo
 //   • applies any ACTION the chat route returns
 //
-// The AI's first turn is scripted: "halo, apa nama restoran kamu?" We don't
-// round-trip the initial greeting.
+// User uploads render as inline attachments (image thumbs for JPG/PNG/WebP,
+// a file card for PDFs) inside the user's bubble — no placeholder "Kirim 1
+// foto menu" text. The AI's first turn is scripted inside store.init().
 
 import { useEffect, useRef, useState } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import { useOnboarding } from '@/lib/onboarding/store';
 import { generateSlug } from '@/lib/onboarding/slug';
-import type { OnboardingAction, CategoryDraft } from '@/lib/onboarding/types';
+import type { OnboardingAction, CategoryDraft, ChatAttachment } from '@/lib/onboarding/types';
+import { filesToAttachments, fileToAttachment } from '@/lib/onboarding/attachments';
 import { ChatMessage } from './ChatMessage';
 import { PhotoUpload } from './PhotoUpload';
 
@@ -33,9 +36,6 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
   const [input, setInput] = useState('');
   const [uploading, setUploading] = useState<'menu' | 'storefront' | 'logo' | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Greeting is seeded inside store.init() so it survives the async hydration
-  // without racing the component mount. Don't seed from here.
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -123,13 +123,21 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       await patchDraft({ logo_url: body.logo_url });
       await pushMessage({
         role: 'assistant',
-        content: 'Logo udah jadi — cek di preview. Kalau mau beda tinggal bilang aja, atau upload logo kamu sendiri.',
-        kind: 'text',
+        content: 'Logo udah jadi. Kalau mau beda tinggal bilang aja, atau upload logo kamu sendiri.',
+        kind: 'logo_uploaded',
+        attachments: [
+          {
+            type: 'image',
+            url: body.logo_url,
+            name: `${draft.name}-logo.png`,
+            mime: 'image/png',
+          },
+        ],
       });
     } catch (e) {
       await pushMessage({
         role: 'assistant',
-        content: `⚠️ ${(e as Error).message}`,
+        content: `Maaf, ada error: ${(e as Error).message}`,
         kind: 'text',
       });
     } finally {
@@ -164,7 +172,7 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
     } catch (e) {
       await pushMessage({
         role: 'assistant',
-        content: `⚠️ Maaf, ada error: ${(e as Error).message}. Coba lagi.`,
+        content: `Maaf, ada error: ${(e as Error).message}. Coba lagi.`,
         kind: 'text',
       });
     } finally {
@@ -174,11 +182,10 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
 
   async function uploadMenu(files: File[]) {
     setUploading('menu');
-    await pushMessage({
-      role: 'user',
-      content: `📷 Kirim ${files.length} foto menu`,
-      kind: 'text',
-    });
+    // Show what the owner actually uploaded — thumbnails for images, a file
+    // card for PDFs — instead of a "Kirim N foto menu" placeholder string.
+    const attachments = await filesToAttachments(files);
+    await pushMessage({ role: 'user', content: '', kind: 'text', attachments });
     try {
       const fd = new FormData();
       files.forEach((f) => fd.append('photos', f));
@@ -201,7 +208,7 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
     } catch (e) {
       await pushMessage({
         role: 'assistant',
-        content: `⚠️ ${(e as Error).message}`,
+        content: `Maaf, ada error: ${(e as Error).message}`,
         kind: 'text',
       });
     } finally {
@@ -211,11 +218,8 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
 
   async function uploadStorefront(files: File[]) {
     setUploading('storefront');
-    await pushMessage({
-      role: 'user',
-      content: '📷 Foto depan restoran',
-      kind: 'text',
-    });
+    const attachments = await filesToAttachments(files.slice(0, 1));
+    await pushMessage({ role: 'user', content: '', kind: 'text', attachments });
     try {
       const fd = new FormData();
       fd.append('photo', files[0]);
@@ -241,7 +245,45 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
     } catch (e) {
       await pushMessage({
         role: 'assistant',
-        content: `⚠️ ${(e as Error).message}`,
+        content: `Maaf, ada error: ${(e as Error).message}`,
+        kind: 'text',
+      });
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function uploadLogo(files: File[]) {
+    const file = files[0];
+    if (!file) return;
+    setUploading('logo');
+    // Thumbnail appears immediately so the owner sees their logo land in the
+    // chat. The server response gives us the public URL we patch into the
+    // draft — we keep the local thumbnail as the attachment so the bubble
+    // stays identical across reloads even if the public URL changes.
+    const attachment: ChatAttachment = await fileToAttachment(file);
+    await pushMessage({
+      role: 'user',
+      content: '',
+      kind: 'text',
+      attachments: [attachment],
+    });
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      const res = await fetch('/api/onboarding/upload-logo', { method: 'POST', body: fd });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? 'Gagal upload logo');
+      await patchDraft({ logo_url: body.logo_url });
+      await pushMessage({
+        role: 'assistant',
+        content: 'Logo kamu udah kepasang. Cek di preview — kalau mau ganti tinggal upload lagi atau minta aku bikinin.',
+        kind: 'text',
+      });
+    } catch (e) {
+      await pushMessage({
+        role: 'assistant',
+        content: `Maaf, ada error: ${(e as Error).message}`,
         kind: 'text',
       });
     } finally {
@@ -266,15 +308,22 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         <div className="ob-panel__uploads">
           <PhotoUpload
             multiple
-            label="Foto / PDF menu"
-            hint="JPG · PNG · WebP · PDF · max 32MB"
+            label="Menu"
+            hint="Foto / PDF · max 32MB"
             accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
             busy={uploading === 'menu'}
             onFiles={uploadMenu}
           />
           <PhotoUpload
-            label="Foto depan toko"
-            hint="Buat ambil warna brand kamu"
+            label="Logo"
+            hint="PNG · SVG · JPG"
+            accept="image/jpeg,image/png,image/webp,image/svg+xml"
+            busy={uploading === 'logo'}
+            onFiles={uploadLogo}
+          />
+          <PhotoUpload
+            label="Foto brand"
+            hint="Buat ambil warna"
             busy={uploading === 'storefront'}
             onFiles={uploadStorefront}
           />

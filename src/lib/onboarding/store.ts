@@ -103,7 +103,7 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
               id: 'greeting',
               role: 'assistant' as const,
               content:
-                'Halo! 👋 Aku asisten Sajian. Aku bakal bantu kamu bikin halaman pemesanan online buat restoran kamu. Prosesnya sekitar 15 menit.\n\nPertama, apa nama restoran kamu?',
+                'Halo! Aku asisten Sajian. Aku bakal bantu kamu bikin halaman pemesanan online buat restoran kamu. Prosesnya sekitar 15 menit.\n\nPertama, apa nama restoran kamu?',
               kind: 'text' as const,
               createdAt: Date.now(),
             },
