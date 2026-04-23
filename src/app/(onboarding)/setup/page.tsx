@@ -11,69 +11,35 @@ import { Loader2, Sparkles, Smartphone, Monitor, MessageCircle, Eye } from 'luci
 import { createClient } from '@/lib/supabase/client';
 import { useOnboarding } from '@/lib/onboarding/store';
 import { ChatPanel } from '@/components/onboarding/ChatPanel';
-import type { CategoryDraft, MenuItemDraft, TenantDraft } from '@/lib/onboarding/types';
+import type { TenantDraft } from '@/lib/onboarding/types';
 
 type DeviceMode = 'phone' | 'desktop';
 
 // When the owner lands on /setup from /admin we pre-fill the draft from their
-// live tenant instead of showing an empty shell. The preview then reflects
-// their actual store on load, and any edit the owner makes via AI chat either
-// updates the live tenant (POST /api/onboarding/launch detects existing
-// ownership) or creates a fresh one (apex /signup path).
-//
-// IMPORTANT: pull every column the preview might render — dropping a field
-// here makes the preview look incomplete even though the live store is fine.
-async function seedDraftFromLiveTenant(userId: string): Promise<TenantDraft | null> {
+// live tenant instead of showing an empty shell. Browser-client RLS was
+// silently filtering menu items (`is_available=false` rows and nested embed
+// edge cases returned empty arrays), so we fetch through a server route that
+// uses the service client after verifying ownership via the auth cookie.
+async function seedDraftFromLiveTenant(): Promise<TenantDraft | null> {
   const host = window.location.hostname;
   const sub = host.split(':')[0].split('.')[0];
   if (!sub || sub === 'sajian' || sub === 'www' || sub === 'localhost') return null;
 
-  const supabase = createClient();
-  const { data: tenant } = await supabase
-    .from('tenants')
-    .select(
-      'id, slug, name, tagline, colors, theme_template, logo_url, hero_image_url, operating_hours, pos_provider, owner_user_id',
-    )
-    .eq('slug', sub)
-    .maybeSingle();
-  if (!tenant || tenant.owner_user_id !== userId) return null;
-
-  const { data: cats } = await supabase
-    .from('menu_categories')
-    .select(
-      'name, sort_order, menu_items(name, price, description, image_url, is_available, tags, sort_order)',
-    )
-    .eq('tenant_id', tenant.id)
-    .order('sort_order');
-
-  type DBItem = MenuItemDraft & { sort_order?: number };
-  const menuCategories: CategoryDraft[] = (cats ?? []).map((c) => ({
-    name: c.name as string,
-    items: ((c.menu_items as DBItem[] | null) ?? [])
-      .slice()
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      .map((i) => ({
-        name: i.name,
-        price: i.price,
-        description: i.description,
-        image_url: i.image_url ?? null,
-        is_available: i.is_available ?? true,
-        tags: i.tags ?? [],
-      })),
-  }));
-
-  return {
-    name: tenant.name as string,
-    slug: tenant.slug as string,
-    tagline: (tenant.tagline as string | null) ?? undefined,
-    colors: (tenant.colors as TenantDraft['colors']) ?? undefined,
-    theme_template: (tenant.theme_template as TenantDraft['theme_template']) ?? undefined,
-    logo_url: (tenant.logo_url as string | null) ?? null,
-    hero_image_url: (tenant.hero_image_url as string | null) ?? null,
-    operating_hours: (tenant.operating_hours as TenantDraft['operating_hours']) ?? undefined,
-    pos_provider: (tenant.pos_provider as TenantDraft['pos_provider']) ?? undefined,
-    menu_categories: menuCategories,
-  };
+  try {
+    const res = await fetch(`/api/onboarding/seed-from-live?slug=${encodeURIComponent(sub)}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      // 401/403/404 just mean "this user isn't the owner of this subdomain"
+      // — treat as a silent no-op so a stranger hitting /setup on a tenant
+      // domain falls through to the fresh-onboarding flow.
+      return null;
+    }
+    const body = (await res.json()) as { draft?: TenantDraft };
+    return body.draft ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export default function SetupPage() {
@@ -117,7 +83,7 @@ export default function SetupPage() {
         !current.menu_categories ||
         !current.menu_categories.some((c) => c.items.length > 0);
       if (draftIsStale) {
-        const seeded = await seedDraftFromLiveTenant(user.id);
+        const seeded = await seedDraftFromLiveTenant();
         if (seeded) {
           await useOnboarding.getState().patchDraft(seeded);
           // If the only message is the fresh-onboarding greeting, swap it
