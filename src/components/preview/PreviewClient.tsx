@@ -16,9 +16,19 @@ import { formatCurrency } from '@/lib/utils';
 import type { MenuItemDraft, TenantDraft } from '@/lib/onboarding/types';
 import { StorefrontRenderer } from '@/components/storefront/StorefrontRenderer';
 import type { SectionContext } from '@/lib/storefront/section-types';
+import { configuredAppOrigin } from '@/lib/security/preview-origin';
 
 const PREVIEW_MSG_DRAFT = 'sajian:draft';
 const PREVIEW_MSG_READY = 'sajian:preview:ready';
+
+// When the preview runs on its own origin (preview.sajian.app) the
+// parent's origin is fixed by env and must be explicitly trusted. On
+// localhost dev both sides share an origin, so we fall back to
+// window.location.origin which still works for postMessage pinning.
+function expectedParentOrigin(): string {
+  if (typeof window === 'undefined') return '';
+  return configuredAppOrigin() ?? window.location.origin;
+}
 
 const DEFAULT_COLORS = {
   primary: '#1B5E3B',
@@ -52,8 +62,11 @@ export function PreviewClient({ initial }: { initial: TenantDraft }) {
   const [draft, setDraft] = useState<TenantDraft>(initial);
 
   useEffect(() => {
+    const parentOrigin = expectedParentOrigin();
     function onMessage(e: MessageEvent) {
-      if (e.origin !== window.location.origin) return;
+      // Pin to the configured parent origin. In the cross-origin prod
+      // setup this rejects anything that isn't the real /setup page.
+      if (!parentOrigin || e.origin !== parentOrigin) return;
       const data = e.data as { type?: string; draft?: TenantDraft } | null;
       if (!data || typeof data !== 'object') return;
       if (data.type === PREVIEW_MSG_DRAFT && data.draft) {
@@ -62,11 +75,15 @@ export function PreviewClient({ initial }: { initial: TenantDraft }) {
     }
     window.addEventListener('message', onMessage);
     // Ask parent to replay the current draft — avoids the race where the
-    // parent sent its update before we were mounted.
+    // parent sent its update before we were mounted. Use the pinned
+    // parent origin so the ready message isn't readable by another frame.
     try {
-      window.parent?.postMessage({ type: PREVIEW_MSG_READY }, window.location.origin);
+      window.parent?.postMessage(
+        { type: PREVIEW_MSG_READY },
+        parentOrigin || window.location.origin,
+      );
     } catch {
-      // Parent may be cross-origin or missing in detached tab; ignore.
+      // Parent may be missing in a detached tab; ignore.
     }
     return () => window.removeEventListener('message', onMessage);
   }, []);

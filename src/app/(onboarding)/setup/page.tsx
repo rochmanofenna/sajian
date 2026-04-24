@@ -5,13 +5,14 @@
 // owner sees exactly what their customers will see, rendered at a phone's
 // aspect ratio for immediate credibility.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Sparkles, Smartphone, Monitor, MessageCircle, Eye } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useOnboarding } from '@/lib/onboarding/store';
 import { ChatPanel } from '@/components/onboarding/ChatPanel';
 import type { TenantDraft } from '@/lib/onboarding/types';
+import { resolvePreviewOrigin } from '@/lib/security/preview-origin';
 
 type DeviceMode = 'phone' | 'desktop';
 
@@ -137,39 +138,54 @@ export default function SetupPage() {
     })();
   }, [init, router]);
 
+  // Preview origin split: in prod we point the iframe at
+  // preview.sajian.app so the sandbox runs in an opaque-origin context
+  // (no access to parent cookies/localStorage). Dev fallback is same
+  // origin so the current `npm run dev` loop keeps working unchanged.
+  const previewOrigin = useMemo(() => {
+    if (typeof window === 'undefined') return { origin: '', isCrossOrigin: false };
+    return resolvePreviewOrigin(window.location.origin);
+  }, []);
+
+  const previewSrc = useMemo(() => {
+    if (!userId) return null;
+    return `${previewOrigin.origin}/preview/${userId}`;
+  }, [previewOrigin.origin, userId]);
+
   // Live preview via postMessage. Every draft change gets relayed to the
   // iframe so the owner sees colors + menu + logo update without a reload or
   // flicker. Debounce the send by 80ms so a burst of patches (e.g. AI adding
-  // 10 menu items at once) collapses into one repaint.
+  // 10 menu items at once) collapses into one repaint. targetOrigin MUST
+  // be the preview's origin (not '*') so a hijacked frame can't read the
+  // draft.
   useEffect(() => {
-    if (!iframeRef.current || !userId) return;
+    if (!iframeRef.current || !userId || !previewOrigin.origin) return;
     const t = setTimeout(() => {
       const el = iframeRef.current;
-      el?.contentWindow?.postMessage(
-        { type: 'sajian:draft', draft },
-        window.location.origin,
-      );
+      el?.contentWindow?.postMessage({ type: 'sajian:draft', draft }, previewOrigin.origin);
     }, 80);
     return () => clearTimeout(t);
-  }, [draft, userId]);
+  }, [draft, userId, previewOrigin.origin]);
 
   // Preview announces readiness after it mounts — replay the current draft
   // so the first paint reflects any edits that happened before the iframe
-  // loaded (e.g. the seed-from-live-tenant flow).
+  // loaded (e.g. the seed-from-live-tenant flow). Pin the accepted origin
+  // to exactly the preview origin; wildcard would let any frame on the
+  // page spoof ready messages.
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      if (e.origin !== window.location.origin) return;
+      if (!previewOrigin.origin || e.origin !== previewOrigin.origin) return;
       const data = e.data as { type?: string } | null;
       if (data?.type === 'sajian:preview:ready') {
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'sajian:draft', draft: useOnboarding.getState().draft },
-          window.location.origin,
+          previewOrigin.origin,
         );
       }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, []);
+  }, [previewOrigin.origin]);
 
   async function launch() {
     setLaunching(true);
@@ -284,12 +300,25 @@ export default function SetupPage() {
           {launchError && (
             <div className="ob-device__error">{launchError}</div>
           )}
-          <iframe
-            ref={iframeRef}
-            src={`/preview/${userId}`}
-            title="Preview"
-            className="ob-device__frame"
-          />
+          {previewSrc && (
+            <iframe
+              ref={iframeRef}
+              src={previewSrc}
+              title="Preview"
+              className="ob-device__frame"
+              // Cross-origin preview: drop allow-same-origin so cookies +
+              // localStorage inside the iframe are scoped to an opaque
+              // origin. Parent session becomes unreachable from the
+              // sandbox. Same-origin dev keeps default behavior so our
+              // live-reload machinery still works.
+              sandbox={
+                previewOrigin.isCrossOrigin
+                  ? 'allow-scripts allow-forms allow-popups'
+                  : undefined
+              }
+              referrerPolicy="no-referrer"
+            />
+          )}
         </div>
       </section>
     </div>
