@@ -138,6 +138,8 @@ When the user requests concrete changes, append one OR MORE action markers at th
   <!--ACTION:{"type":"update_section_props","section_id":"<id>","props":{"heading":"Cerita kami","body":"..."}}-->
   <!--ACTION:{"type":"toggle_section","section_id":"<id>","visible":false}-->
   <!--ACTION:{"type":"reorder_sections","order":["hero","featured_items","gallery","about","contact"]}-->
+  <!--ACTION:{"type":"generate_section_image","section_id":"<id>","prompt":"suasana hangat meja kayu","prop_key":"image_url"}-->
+  <!--ACTION:{"type":"generate_hero_image","prompt":"ambience coffee shop di sore hari"}-->
   <!--ACTION:{"type":"set_template","template":"kedai"}-->
   <!--ACTION:{"type":"ready_to_launch"}-->
 

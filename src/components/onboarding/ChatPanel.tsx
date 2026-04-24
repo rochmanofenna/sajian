@@ -121,6 +121,12 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       case 'reorder_sections':
         await reorderSections(action.order);
         break;
+      case 'generate_section_image':
+        await generateSectionImage(action.section_id, action.prompt, action.prop_key);
+        break;
+      case 'generate_hero_image':
+        await generateHeroImage(action.prompt);
+        break;
       case 'set_template':
         await patchDraft({ theme_template: action.template });
         break;
@@ -181,6 +187,85 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       return true;
     } catch (err) {
       console.error('[chat] food photo threw', err);
+      return false;
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  // Generate a DALL-E image and stash it on the target section's props bag.
+  // `propKey` defaults to "image_url"; override for e.g. heroImageUrl.
+  async function generateSectionImage(
+    sectionId: string,
+    prompt?: string,
+    propKey?: string,
+  ): Promise<boolean> {
+    const sections = draft.sections ?? [];
+    const target = sections.find((s) => s.id === sectionId);
+    if (!target) {
+      console.warn('[chat] generate_section_image: section not found', sectionId);
+      return false;
+    }
+    setUploading('logo');
+    try {
+      const res = await fetch('/api/ai/generate-section-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section_type: target.type,
+          prompt,
+          extra: `Restoran: ${draft.name ?? ''}. ${draft.food_type ?? ''}`,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.image_url) {
+        console.error('[chat] section image failed', body);
+        await pushMessage({
+          role: 'assistant',
+          content: 'Foto section gagal dibuat. Coba lagi sebentar lagi.',
+          kind: 'text',
+        });
+        return false;
+      }
+      const key = propKey ?? 'image_url';
+      await updateSectionProps(sectionId, { [key]: body.image_url });
+      return true;
+    } catch (err) {
+      console.error('[chat] section image threw', err);
+      return false;
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  // Hero images live on the tenant (not inside a section prop) so the
+  // legacy template path also picks them up. Promote to draft.hero_image_url.
+  async function generateHeroImage(prompt?: string): Promise<boolean> {
+    setUploading('logo');
+    try {
+      const res = await fetch('/api/ai/generate-section-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          section_type: 'hero',
+          prompt,
+          extra: `Restoran: ${draft.name ?? ''}. ${draft.food_type ?? ''}`,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.image_url) {
+        console.error('[chat] hero image failed', body);
+        await pushMessage({
+          role: 'assistant',
+          content: 'Foto hero gagal dibuat. Coba lagi sebentar.',
+          kind: 'text',
+        });
+        return false;
+      }
+      await patchDraft({ hero_image_url: body.image_url });
+      return true;
+    } catch (err) {
+      console.error('[chat] hero image threw', err);
       return false;
     } finally {
       setUploading(null);

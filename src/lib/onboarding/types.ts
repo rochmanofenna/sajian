@@ -126,4 +126,6 @@ export type OnboardingAction =
   | { type: 'update_section_props'; section_id: string; props: Record<string, unknown> }
   | { type: 'toggle_section'; section_id: string; visible: boolean }
   | { type: 'reorder_sections'; order: string[] }
+  | { type: 'generate_section_image'; section_id: string; prompt?: string; prop_key?: string }
+  | { type: 'generate_hero_image'; prompt?: string }
   | { type: 'ready_to_launch' };
