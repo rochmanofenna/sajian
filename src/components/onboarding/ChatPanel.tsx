@@ -18,6 +18,7 @@ import { useOnboarding } from '@/lib/onboarding/store';
 import { generateSlug } from '@/lib/onboarding/slug';
 import type { OnboardingAction, CategoryDraft, ChatAttachment } from '@/lib/onboarding/types';
 import { filesToAttachments, fileToAttachment } from '@/lib/onboarding/attachments';
+import Link from 'next/link';
 import { ChatMessage } from './ChatMessage';
 import { PhotoUpload } from './PhotoUpload';
 
@@ -676,6 +677,11 @@ Rewrite the source_jsx to fix this. Use only the allowed primitives (Motion, Ove
 
   return (
     <div className="ob-panel">
+      <div className="ob-panel__topbar">
+        <Link href="/setup/history" className="ob-panel__history-link">
+          Riwayat perubahan →
+        </Link>
+      </div>
       <div ref={scrollRef} className="ob-panel__scroll">
         {messages.map((m) => (
           <ChatMessage key={m.id} msg={m} onLaunch={onLaunch} />

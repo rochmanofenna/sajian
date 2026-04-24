@@ -102,6 +102,27 @@
 
 .ob-header__actions { display: inline-flex; align-items: center; gap: 8px; }
 
+.ob-panel__topbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 16px 0;
+}
+.ob-panel__history-link {
+  font-family: var(--ob-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ob-ink-mute, #6A6861);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 999px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.ob-panel__history-link:hover {
+  color: var(--ob-ink, #0A0B0A);
+  background: rgba(10, 11, 10, 0.04);
+}
+
 /* ── Section engine — enter animation + color crossfades ─────────────── */
 
 .sj-sections {
