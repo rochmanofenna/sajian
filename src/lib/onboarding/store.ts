@@ -34,6 +34,7 @@ interface OnboardingState {
   addItem: (category: string, item: MenuItemDraft) => Promise<void>;
   removeItem: (itemName: string) => Promise<void>;
   updateItem: (itemName: string, field: 'name' | 'price' | 'description', value: string | number) => Promise<void>;
+  setItemImage: (itemName: string, imageUrl: string | null) => Promise<void>;
   pushMessage: (msg: Omit<ChatMessage, 'id' | 'createdAt'>) => Promise<ChatMessage>;
   setMessages: (messages: ChatMessage[]) => Promise<void>;
   setLoading: (b: boolean) => void;
@@ -175,6 +176,22 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
           ...c,
           items: c.items.map((i) =>
             i.name.trim().toLowerCase() === needle ? { ...i, [field]: value } : i,
+          ),
+        })),
+      },
+    }));
+    persist(get());
+  },
+
+  setItemImage: async (itemName, imageUrl) => {
+    const needle = itemName.trim().toLowerCase();
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        menu_categories: (s.draft.menu_categories ?? []).map((c) => ({
+          ...c,
+          items: c.items.map((i) =>
+            i.name.trim().toLowerCase() === needle ? { ...i, image_url: imageUrl } : i,
           ),
         })),
       },
