@@ -461,6 +461,10 @@
     0 16px 32px -12px rgba(10, 11, 10, 0.25),
     inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   overflow: hidden;
+  /* Safari needs its own stacking context before border-radius reliably
+     clips a nested iframe; without isolation the preview content bleeds
+     past the bottom bezel. */
+  isolation: isolate;
   transition: width 0.35s ease, border-radius 0.35s ease, padding 0.35s ease;
 }
 
@@ -549,6 +553,7 @@
   border: 0;
   background: white;
   display: block;
+  overflow: hidden;
 }
 .ob-device__launching {
   position: absolute;
