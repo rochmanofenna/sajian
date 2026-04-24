@@ -19,6 +19,7 @@ import { errorResponse, badRequest } from '@/lib/api/errors';
 import { allow, AI_RATE_PROFILES } from '@/lib/ai/rate-limit';
 import { identityKey } from '@/lib/api/auth';
 import type { OnboardingAction, TenantDraft } from '@/lib/onboarding/types';
+import { SECTION_VARIANTS } from '@/lib/storefront/section-types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -41,11 +42,32 @@ function menuSummary(draft: TenantDraft): string {
   return cats
     .map((c) => {
       const items = c.items
-        .map((i) => `  - ${i.name} · ${i.price}${i.is_available === false ? ' · HABIS' : ''}`)
+        .map((i) => `  - ${i.name} · ${i.price}${i.is_available === false ? ' · HABIS' : ''}${i.image_url ? '' : ' · NO_PHOTO'}`)
         .join('\n');
       return `${c.name} (${c.items.length} item):\n${items}`;
     })
     .join('\n\n');
+}
+
+function sectionsSummary(draft: TenantDraft): string {
+  const sections = draft.sections ?? [];
+  if (sections.length === 0) return '(belum ada sections)';
+  return sections
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map(
+      (s) =>
+        `  - id=${s.id} type=${s.type} variant=${s.variant}${
+          s.is_visible === false ? ' · hidden' : ''
+        }`,
+    )
+    .join('\n');
+}
+
+function sectionCatalog(): string {
+  return (Object.entries(SECTION_VARIANTS) as Array<[string, readonly string[]]>)
+    .map(([type, variants]) => `  - ${type}: ${variants.join(' | ')}`)
+    .join('\n');
 }
 
 const SYSTEM = (draft: TenantDraft) => {
@@ -83,6 +105,10 @@ const SYSTEM = (draft: TenantDraft) => {
     ? `\n\nCurrent live menu (this is the source of truth — reference these item names exactly):\n\`\`\`\n${menuSummary(draft)}\n\`\`\``
     : '';
 
+  const sectionContext = `\n\nStorefront sections currently on the page (in render order):\n\`\`\`\n${sectionsSummary(
+    draft,
+  )}\n\`\`\`\n\nAvailable section types and their variants:\n\`\`\`\n${sectionCatalog()}\n\`\`\``;
+
   return `${header}
 
 Speak casual, friendly Bahasa Indonesia (like chatting with a friend — not formal). Keep replies short: 1–3 sentences. Do NOT use emojis or decorative symbols — the UI is editorial and emojis read as tacky. Plain text only.
@@ -90,7 +116,7 @@ Speak casual, friendly Bahasa Indonesia (like chatting with a friend — not for
 Current draft state:
 \`\`\`json
 ${JSON.stringify(draft, null, 2)}
-\`\`\`${menuContext}
+\`\`\`${menuContext}${sectionContext}
 
 ${goals}
 
@@ -104,6 +130,14 @@ When the user requests concrete changes, append one OR MORE action markers at th
   <!--ACTION:{"type":"remove_menu_item","item":"Nasi Goreng Seafood"}-->
   <!--ACTION:{"type":"update_menu_item","item":"Nasi Goreng","field":"price","value":28000}-->
   <!--ACTION:{"type":"generate_logo"}-->
+  <!--ACTION:{"type":"generate_food_photo","item":"Nasi Goreng"}-->
+  <!--ACTION:{"type":"generate_all_photos"}-->
+  <!--ACTION:{"type":"add_section","section_type":"promo","variant":"banner","position":"after:hero","props":{"headline":"Diskon 20% hari ini","body":"Pakai kode SAJIAN20"}}-->
+  <!--ACTION:{"type":"remove_section","section_id":"<id from state>"}-->
+  <!--ACTION:{"type":"update_section_variant","section_id":"<id>","variant":"split"}-->
+  <!--ACTION:{"type":"update_section_props","section_id":"<id>","props":{"heading":"Cerita kami","body":"..."}}-->
+  <!--ACTION:{"type":"toggle_section","section_id":"<id>","visible":false}-->
+  <!--ACTION:{"type":"reorder_sections","order":["hero","featured_items","gallery","about","contact"]}-->
   <!--ACTION:{"type":"set_template","template":"kedai"}-->
   <!--ACTION:{"type":"ready_to_launch"}-->
 
@@ -127,11 +161,15 @@ How to pick:
 Rules for actions:
 - Only emit an action when the user explicitly asks for a change, OR when you're assigning the first template based on food_type. Never preemptively for other fields.
 - Prices are integers in Rupiah. "28 ribu" → 28000. "25rb" → 25000.
-- Field names must be exactly "name" | "price" | "description".
+- Field names for update_menu_item must be exactly "name" | "price" | "description".
 - Each action marker must be valid JSON on a single line. Multiple markers are fine — place them all at the very end, one per line.
 - If no change is needed, do not emit any action.
 - Never GUESS the restaurant name from a casual message — if name is missing, ASK.
-- If the user says things like "bikinin logo" or "buatin logo", emit generate_logo (do NOT treat it as a name).`;
+- If the user says things like "bikinin logo" or "buatin logo", emit generate_logo (do NOT treat it as a name).
+- If the user asks for a photo of a specific dish ("bikinin foto nasi goreng"), emit generate_food_photo with the EXACT item name from the menu summary.
+- If the user asks "bikinin foto semua menu" / "foto untuk semua item", emit generate_all_photos (batch).
+- Section actions use the type catalog above. Variant must be one of the listed variants for that type. For add_section, use "position" like "after:hero" or "before:contact" to place it relative to existing sections; default is "end".
+- When the user asks for something that sounds unsupported (reservations, payment gateway, analytics dashboard), DON'T just say "belum tersedia" — try to re-frame it: suggest a promo section with their WhatsApp number for reservations, or point out that cashier-payment is already live, or mention that order stats live on the admin Pesanan tab. Always offer a path forward.`;
 };
 
 function parseActions(text: string): OnboardingAction[] {
@@ -154,6 +192,8 @@ const ESB_FORBIDDEN_ACTIONS = new Set([
   'add_menu_item',
   'remove_menu_item',
   'update_menu_item',
+  'generate_food_photo',
+  'generate_all_photos',
 ]);
 
 export async function POST(req: Request) {

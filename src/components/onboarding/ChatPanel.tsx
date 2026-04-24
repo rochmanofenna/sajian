@@ -30,6 +30,13 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
   const addItem = useOnboarding((s) => s.addItem);
   const removeItem = useOnboarding((s) => s.removeItem);
   const updateItem = useOnboarding((s) => s.updateItem);
+  const setItemImage = useOnboarding((s) => s.setItemImage);
+  const addSection = useOnboarding((s) => s.addSection);
+  const removeSection = useOnboarding((s) => s.removeSection);
+  const updateSectionVariant = useOnboarding((s) => s.updateSectionVariant);
+  const updateSectionProps = useOnboarding((s) => s.updateSectionProps);
+  const toggleSection = useOnboarding((s) => s.toggleSection);
+  const reorderSections = useOnboarding((s) => s.reorderSections);
   const loading = useOnboarding((s) => s.loading);
   const setLoading = useOnboarding((s) => s.setLoading);
 
@@ -85,6 +92,35 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       case 'generate_logo':
         await generateLogo();
         break;
+      case 'generate_food_photo':
+        await generateFoodPhoto(action.item);
+        break;
+      case 'generate_all_photos':
+        await generateAllFoodPhotos();
+        break;
+      case 'add_section':
+        await addSection({
+          type: action.section_type,
+          variant: action.variant,
+          props: action.props,
+          position: action.position,
+        });
+        break;
+      case 'remove_section':
+        await removeSection(action.section_id);
+        break;
+      case 'update_section_variant':
+        await updateSectionVariant(action.section_id, action.variant);
+        break;
+      case 'update_section_props':
+        await updateSectionProps(action.section_id, action.props);
+        break;
+      case 'toggle_section':
+        await toggleSection(action.section_id, action.visible);
+        break;
+      case 'reorder_sections':
+        await reorderSections(action.order);
+        break;
       case 'set_template':
         await patchDraft({ theme_template: action.template });
         break;
@@ -96,6 +132,90 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         });
         break;
     }
+  }
+
+  // Look an item up case-insensitively across all categories, then call the
+  // food-photo endpoint and patch its image_url on success.
+  async function generateFoodPhoto(itemName: string): Promise<boolean> {
+    const needle = itemName.trim().toLowerCase();
+    let found: { name: string; description?: string; category: string } | null = null;
+    for (const cat of draft.menu_categories ?? []) {
+      for (const item of cat.items) {
+        if (item.name.trim().toLowerCase() === needle) {
+          found = { name: item.name, description: item.description, category: cat.name };
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (!found) {
+      await pushMessage({
+        role: 'assistant',
+        content: `Aku belum nemu item "${itemName}" di menu. Cek nama item yang mau difoto?`,
+        kind: 'text',
+      });
+      return false;
+    }
+    setUploading('logo');
+    try {
+      const res = await fetch('/api/ai/generate-food-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemName: found.name,
+          description: found.description,
+          category: found.category,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.image_url) {
+        console.error('[chat] food photo failed', body);
+        await pushMessage({
+          role: 'assistant',
+          content: `Gagal bikin foto "${found.name}". Coba lagi sebentar lagi.`,
+          kind: 'text',
+        });
+        return false;
+      }
+      await setItemImage(found.name, body.image_url);
+      return true;
+    } catch (err) {
+      console.error('[chat] food photo threw', err);
+      return false;
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function generateAllFoodPhotos() {
+    const targets: Array<{ name: string }> = [];
+    for (const cat of draft.menu_categories ?? []) {
+      for (const item of cat.items) {
+        if (!item.image_url) targets.push({ name: item.name });
+      }
+    }
+    if (targets.length === 0) {
+      await pushMessage({
+        role: 'assistant',
+        content: 'Semua menu kamu udah ada fotonya!',
+        kind: 'text',
+      });
+      return;
+    }
+    await pushMessage({
+      role: 'assistant',
+      content: `Oke, aku bikinin foto buat ${targets.length} item. Ini bisa makan waktu ~${targets.length * 10} detik — lihat preview update satu per satu.`,
+      kind: 'text',
+    });
+    for (const t of targets) {
+      await generateFoodPhoto(t.name);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    await pushMessage({
+      role: 'assistant',
+      content: 'Beres! Semua menu udah punya foto. Cek preview-nya.',
+      kind: 'text',
+    });
   }
 
   async function generateLogo() {
