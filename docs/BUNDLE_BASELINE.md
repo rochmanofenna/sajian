@@ -1,4 +1,4 @@
-# Bundle baseline — Phase 0 snapshot
+# Bundle baseline — Phase 0 snapshot (Phase 1 delta tracked below)
 
 Captured immediately after Phase 0 landed. This is the regression gate
 for every subsequent codegen phase. A customer-path increase > 10% in
@@ -101,3 +101,29 @@ For each client-facing PR:
 If a codegen phase needs to ship more code to the customer (unlikely,
 since the AST renderer is stateless), justify explicitly in the PR and
 update this file with the new floor.
+
+## Phase 1 delta (primitives + sanitizer + expression language)
+
+Measured after the commit that added framer-motion + jsep, with
+Motion / Countdown / Scheduled / TimeOfDay lazy-loaded from
+SlotRenderer so framer-motion doesn't enter the customer cold path.
+
+| Metric | Phase 0 | Phase 1 | Delta |
+|---|---|---|---|
+| Total chunks dir | 1.4 MB | 1.6 MB | +200 KB (framer-motion on disk) |
+| Top-4 chunks raw | 696 KB | 696 KB | **0 KB** (unchanged) |
+| Top-4 chunks gz  | 204 KB | 204 KB | **0 KB** (unchanged) |
+| Customer cold path (top 3 framework/app chunks) | ~559 KB raw / 167 KB gz | ~559 KB raw / 167 KB gz | unchanged |
+| `framer-motion` on customer cold path | n/a | **not present** ✅ | lazy chunk only loaded when a Motion node actually renders |
+
+### Verification commands
+
+```bash
+du -b .next/static/chunks/*.js | sort -rn | head -5
+# Should match Phase 0's top 4 — a fifth chunk may shuffle but no
+# framer-motion chunk should appear in the top 5.
+
+grep -l "framer-motion" .next/static/chunks/*.js | wc -l
+# Expect >= 1 (the lazy chunk is emitted). If zero, verify SlotRenderer
+# still uses lazy() + Suspense for Motion.
+```

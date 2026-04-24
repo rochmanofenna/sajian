@@ -3,11 +3,15 @@
 
 import { formatCurrency } from '@/lib/utils';
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
+import { SlotRenderer } from '@/components/storefront/SlotRenderer';
 
 interface FeaturedProps {
   heading?: string;
   items?: string[]; // explicit item names to feature; else auto-pick
   limit?: number;
+  // Phase 1 slot hook: primitive tree rendered after the items grid
+  // (e.g. a "See all menu →" button styled differently, or a badge).
+  trailing_slot?: unknown;
 }
 
 type Item = SectionComponentProps['ctx']['menuCategories'][number]['items'][number];
@@ -26,9 +30,23 @@ export function FeaturedItems({ section, ctx, props }: SectionComponentProps<Fea
   const items = pickItems(ctx, props);
   if (items.length === 0) return null;
 
-  if (section.variant === 'grid') return <Grid ctx={ctx} props={props} items={items} />;
-  if (section.variant === 'spotlight') return <Spotlight ctx={ctx} props={props} items={items} />;
-  return <Horizontal ctx={ctx} props={props} items={items} />;
+  const inner = (() => {
+    if (section.variant === 'grid') return <Grid ctx={ctx} props={props} items={items} />;
+    if (section.variant === 'spotlight') return <Spotlight ctx={ctx} props={props} items={items} />;
+    return <Horizontal ctx={ctx} props={props} items={items} />;
+  })();
+
+  if (!props.trailing_slot) return inner;
+  return (
+    <>
+      {inner}
+      <div className="px-6 pb-8 -mt-4" style={{ background: ctx.colors.background }}>
+        <div className="max-w-4xl mx-auto">
+          <SlotRenderer tree={props.trailing_slot} />
+        </div>
+      </div>
+    </>
+  );
 }
 
 function Header({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: FeaturedProps }) {

@@ -12,6 +12,7 @@ import {
   type Align,
   type CtaSize,
 } from './cta';
+import { SlotRenderer } from '@/components/storefront/SlotRenderer';
 
 interface TimelineEntry {
   year: string;
@@ -33,6 +34,9 @@ interface AboutProps {
   cta_align?: Align;
   // Opt-in — About is primarily copy; the CTA only renders when truthy.
   cta_visible?: boolean;
+  // Phase 1 slot hook: a small tree rendered next to / under the body
+  // (useful for a credentials badge, social proof, etc.).
+  aside_slot?: unknown;
 }
 
 function ctaVisible(props: AboutProps): boolean {
@@ -61,9 +65,22 @@ function Cta({
 }
 
 export function About({ section, ctx, props }: SectionComponentProps<AboutProps>) {
-  if (section.variant === 'with_image') return <WithImage ctx={ctx} props={props} />;
-  if (section.variant === 'story') return <Story ctx={ctx} props={props} />;
-  return <Simple ctx={ctx} props={props} />;
+  const base = (() => {
+    if (section.variant === 'with_image') return <WithImage ctx={ctx} props={props} />;
+    if (section.variant === 'story') return <Story ctx={ctx} props={props} />;
+    return <Simple ctx={ctx} props={props} />;
+  })();
+  if (!props.aside_slot) return base;
+  return (
+    <>
+      {base}
+      <div className="px-6 pb-10 -mt-4" style={{ background: ctx.colors.background }}>
+        <div className="max-w-2xl mx-auto">
+          <SlotRenderer tree={props.aside_slot} />
+        </div>
+      </div>
+    </>
+  );
 }
 
 function Simple({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: AboutProps }) {

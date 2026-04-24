@@ -1,6 +1,11 @@
-// Gallery — shows menu item photos (or explicit `photos` prop) in a grid,
-// carousel, or 1-large-4-thumbnails featured layout.
+'use client';
 
+// Gallery — shows menu item photos (or explicit `photos` prop) in a grid,
+// carousel, or 1-large-4-thumbnails featured layout. The grid variant
+// doubles as a lightbox — clicking a thumbnail opens a full-screen
+// zoomed view; ESC or clicking the backdrop closes it.
+
+import { useEffect, useState } from 'react';
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
 
 interface GalleryProps {
@@ -47,6 +52,21 @@ function Grid({
   props: GalleryProps;
   photos: string[];
 }) {
+  // Lightbox: clicking a thumb opens a full-screen zoom; ESC / backdrop
+  // / the X close it. Keyboard arrow keys step through siblings. All
+  // state is local — no layout shift on the page when open.
+  const [open, setOpen] = useState<number | null>(null);
+  useEffect(() => {
+    if (open === null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(null);
+      if (e.key === 'ArrowRight') setOpen((i) => (i === null ? null : (i + 1) % photos.length));
+      if (e.key === 'ArrowLeft') setOpen((i) => (i === null ? null : (i - 1 + photos.length) % photos.length));
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, photos.length]);
+
   return (
     <section
       className="px-6 py-10"
@@ -56,17 +76,45 @@ function Grid({
         <Header ctx={ctx} props={props} />
         <div className="grid grid-cols-3 gap-2">
           {photos.map((src, i) => (
-            <div
+            <button
+              type="button"
               key={`${src}-${i}`}
-              className="aspect-square rounded-xl overflow-hidden"
-              style={{ background: `${ctx.colors.primary}10` }}
+              onClick={() => setOpen(i)}
+              aria-label={`Perbesar foto ${i + 1}`}
+              className="aspect-square rounded-xl overflow-hidden focus:outline-none focus:ring-2"
+              style={{ background: `${ctx.colors.primary}10`, border: 0, padding: 0, cursor: 'zoom-in' }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={src} alt="" className="h-full w-full object-cover" />
-            </div>
+            </button>
           ))}
         </div>
       </div>
+      {open !== null && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.9)' }}
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setOpen(null)}
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setOpen(null); }}
+            aria-label="Tutup"
+            className="absolute top-4 right-6 text-white text-3xl"
+          >
+            ×
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photos[open]}
+            alt=""
+            className="max-h-full max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </section>
   );
 }

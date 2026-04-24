@@ -1,9 +1,9 @@
 'use client';
 
-// Promo — banner (full-width), card (floating discount card), or countdown
-// (same as card with an expiry timer). All respect tenant colors and expose
-// cta_* / banner_align / emphasis props so the AI can route layout requests
-// through update_section_props instead of refusing.
+// Promo — banner (full-width), card (floating discount card), countdown
+// (timer), or floating (fixed-position dismissible). All respect tenant
+// colors and expose cta_* / banner_align / emphasis props so the AI can
+// route layout requests through update_section_props instead of refusing.
 
 import { useEffect, useState } from 'react';
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
@@ -14,6 +14,7 @@ import {
   type Align,
   type CtaSize,
 } from './cta';
+import { SlotRenderer } from '@/components/storefront/SlotRenderer';
 
 interface PromoProps {
   headline?: string;
@@ -32,6 +33,9 @@ interface PromoProps {
   expires_at?: string;
   // Optional fine-print under the CTA (promo code, terms).
   fine_print?: string;
+  // Phase 1 slot hook: a small SlotNode tree rendered next to the
+  // headline (useful for an icon + small label like "Baru!").
+  badge_slot?: unknown;
 }
 
 function ctaHidden(props: PromoProps): boolean {
@@ -57,6 +61,7 @@ function bannerBackground(
 export function Promo({ section, ctx, props }: SectionComponentProps<PromoProps>) {
   if (section.variant === 'card') return <Card ctx={ctx} props={props} />;
   if (section.variant === 'countdown') return <Countdown ctx={ctx} props={props} />;
+  if (section.variant === 'floating') return <FloatingClient ctx={ctx} props={props} />;
   return <Banner ctx={ctx} props={props} />;
 }
 
@@ -73,6 +78,11 @@ function Banner({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Prom
         )}`}
         style={bannerBackground(ctx, props.emphasis)}
       >
+        {typeof props.badge_slot !== 'undefined' && (
+          <div className="mb-3 flex justify-center">
+            <SlotRenderer tree={props.badge_slot as unknown} />
+          </div>
+        )}
         <h2
           className="text-2xl font-semibold tracking-tight"
           style={{ fontFamily: 'var(--font-display, serif)' }}
@@ -153,6 +163,75 @@ function Card({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: PromoP
         </div>
       </div>
     </section>
+  );
+}
+
+// Fixed-position dismissible card. Renders at the bottom-right of the
+// viewport; a per-headline localStorage key remembers the dismissal so
+// returning customers see a fresh promo when the owner changes the
+// headline but don't get nagged every session for the same one.
+function FloatingClient({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: PromoProps }) {
+  const key = `sajian:promo-floating:${(props.headline ?? 'promo').slice(0, 40)}`;
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (!window.localStorage.getItem(key)) setOpen(true);
+    } catch {
+      setOpen(true);
+    }
+  }, [key]);
+
+  function dismiss() {
+    setOpen(false);
+    try {
+      window.localStorage.setItem(key, '1');
+    } catch {
+      // private mode — best effort.
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed z-30 max-w-xs rounded-2xl px-4 py-4 shadow-xl"
+      style={{
+        right: 16,
+        bottom: 16,
+        background: ctx.colors.primary,
+        color: ctx.colors.background,
+        boxShadow: `0 12px 32px -12px ${ctx.colors.primary}66`,
+      }}
+      role="complementary"
+    >
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label="Tutup promo"
+        className="absolute top-2 right-3 opacity-80 hover:opacity-100"
+        style={{ color: ctx.colors.background }}
+      >
+        ×
+      </button>
+      <div
+        className="text-sm font-semibold tracking-tight"
+        style={{ fontFamily: 'var(--font-display, serif)' }}
+      >
+        {props.headline ?? 'Ada penawaran'}
+      </div>
+      {props.body && <p className="text-xs opacity-85 mt-1 leading-relaxed">{props.body}</p>}
+      {props.cta_visible !== false && (
+        <a
+          href={props.cta_href ?? '/menu'}
+          className="mt-3 inline-block px-4 h-9 leading-[36px] rounded-full text-xs font-medium"
+          style={{ background: ctx.colors.background, color: ctx.colors.primary }}
+          onClick={dismiss}
+        >
+          {props.cta_label ?? 'Lihat menu'}
+        </a>
+      )}
+    </div>
   );
 }
 
