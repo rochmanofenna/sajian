@@ -59,6 +59,7 @@ interface OnboardingState {
   toggleSection: (sectionId: string, visible: boolean) => Promise<void>;
   reorderSections: (order: string[]) => Promise<void>;
   ensureDefaultSections: () => Promise<void>;
+  resetDraft: () => Promise<void>;
   pushMessage: (msg: Omit<ChatMessage, 'id' | 'createdAt'>) => Promise<ChatMessage>;
   setMessages: (messages: ChatMessage[]) => Promise<void>;
   setLoading: (b: boolean) => void;
@@ -307,6 +308,33 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
     const current = get().draft.sections;
     if (current && current.length > 0) return;
     set((s) => ({ draft: { ...s.draft, sections: defaultSections() } }));
+    persist(get());
+  },
+
+  // Full reset — clears the draft row server-side and the in-memory state.
+  // Escape hatch for contaminated drafts (wrong menu extracted, leftovers
+  // from a failed launch). Seeds a fresh section stack so the preview is
+  // never blank post-reset.
+  resetDraft: async () => {
+    try {
+      await fetch('/api/onboarding/draft', { method: 'DELETE' });
+    } catch (err) {
+      console.error('[onboarding] reset draft api failed', err);
+    }
+    set({
+      step: 'welcome',
+      draft: { sections: defaultSections() },
+      messages: [
+        {
+          id: 'greeting',
+          role: 'assistant' as const,
+          content:
+            'Draft kamu sudah direset. Mulai dari awal — apa nama restoran kamu?',
+          kind: 'text' as const,
+          createdAt: Date.now(),
+        },
+      ],
+    });
     persist(get());
   },
 

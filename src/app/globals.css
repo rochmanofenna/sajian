@@ -100,6 +100,8 @@
 }
 .ob-header__signout:disabled { opacity: 0.5; cursor: wait; }
 
+.ob-header__actions { display: inline-flex; align-items: center; gap: 8px; }
+
 /* ── Section engine — enter animation + color crossfades ─────────────── */
 
 .sj-sections {
