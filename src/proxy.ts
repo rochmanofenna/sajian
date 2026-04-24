@@ -92,8 +92,9 @@ export async function proxy(request: NextRequest) {
   const previewFrameOrigin =
     process.env.NEXT_PUBLIC_PREVIEW_ORIGIN ??
     (host.includes('localhost') ? `http://${host}` : 'https://preview.sajian.app');
+  const appFrameOrigin = appOrigin(host);
 
-  const csp = buildCsp({ context, nonce, previewFrameOrigin });
+  const csp = buildCsp({ context, nonce, previewFrameOrigin, appFrameOrigin });
   const cspHeader = cspHeaderName();
 
   // Thread nonce + CSP onto the REQUEST so Next's internal bootstrap
@@ -113,7 +114,17 @@ export async function proxy(request: NextRequest) {
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('Origin-Agent-Cluster', '?1');
-  response.headers.set('X-Frame-Options', context === 'storefront' ? 'DENY' : 'SAMEORIGIN');
+  // X-Frame-Options doesn't support allow-from, so we can't express
+  // "frame by sajian.app only" here — CSP frame-ancestors does that
+  // precisely. For the preview context we OMIT X-Frame-Options so it
+  // can't override the more specific frame-ancestors directive; legacy
+  // browsers that ignore frame-ancestors also tend to lack support for
+  // the cross-origin features our preview needs anyway.
+  if (context === 'storefront') {
+    response.headers.set('X-Frame-Options', 'DENY');
+  } else if (context === 'app') {
+    response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  }
   response.headers.set(
     'Permissions-Policy',
     'camera=(), microphone=(), geolocation=(self), payment=()',

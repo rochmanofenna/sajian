@@ -15,10 +15,14 @@ export type CspContext = 'storefront' | 'app' | 'preview';
 interface BuildOptions {
   context: CspContext;
   nonce: string;
-  // Origin that may frame this document. On the onboarding app we allow
-  // preview.sajian.app (and localhost equivalent) to be embedded for the
-  // live preview iframe; tenant storefronts are never framed.
+  // Origin of the preview iframe — the document the parent embeds.
+  // Used on the 'app' context to extend frame-src so /setup can load
+  // https://preview.sajian.app/preview/... without a CSP block.
   previewFrameOrigin?: string;
+  // Origin of the app (sajian.app / localhost) — the document that
+  // embeds the preview. Used on the 'preview' context to extend
+  // frame-ancestors so preview.sajian.app agrees to be embedded by it.
+  appFrameOrigin?: string;
 }
 
 // Any supabase project we might talk to — connect-src for realtime,
@@ -34,7 +38,12 @@ function supabaseOrigins(): string[] {
   }
 }
 
-export function buildCsp({ context, nonce, previewFrameOrigin }: BuildOptions): string {
+export function buildCsp({
+  context,
+  nonce,
+  previewFrameOrigin,
+  appFrameOrigin,
+}: BuildOptions): string {
   const supabase = supabaseOrigins();
   const connect = [
     "'self'",
@@ -56,14 +65,30 @@ export function buildCsp({ context, nonce, previewFrameOrigin }: BuildOptions): 
   ];
 
   // Google Maps embed for the location / contact with_map variants.
-  const frameSrc = ["'self'", 'https://www.google.com', 'https://maps.google.com'];
+  // On the app context, also allow framing the preview origin so the
+  // /setup iframe isn't blocked. Preview itself has no business
+  // embedding anything, but 'self' covers any same-origin asset.
+  const frameSrc = [
+    "'self'",
+    'https://www.google.com',
+    'https://maps.google.com',
+    ...(context === 'app' && previewFrameOrigin ? [previewFrameOrigin] : []),
+    ...(context === 'app' ? ['https://preview.sajian.app'] : []),
+  ];
 
+  // frame-ancestors = "who can put ME in an iframe". Semantics per context:
+  //   • storefront  → 'none': never frame a customer's store.
+  //   • preview     → app origin: the /setup page embeds us. The preview
+  //                   origin is NOT a valid ancestor of itself.
+  //   • app         → 'self': nothing else embeds the app.
   const frameAncestors =
     context === 'storefront'
       ? ["'none'"]
-      : ["'self'", previewFrameOrigin, 'https://preview.sajian.app']
-          .filter(Boolean)
-          .map(String);
+      : context === 'preview'
+        ? ["'self'", appFrameOrigin, 'https://sajian.app', 'https://www.sajian.app']
+            .filter(Boolean)
+            .map(String)
+        : ["'self'"];
 
   // `'strict-dynamic'` lets scripts loaded by our nonced bootstrap pull
   // in their own chunks without every chunk needing its own nonce or

@@ -46,13 +46,30 @@ export function resolvePreviewOrigin(
   return { origin: configured, isCrossOrigin: configured !== currentOrigin };
 }
 
-// Expected parent origin from the preview's POV. In prod this is the app
-// origin (sajian.app). In dev we trust window.location.origin because
-// both sides run on localhost.
+// Expected parent origin from the preview's POV. In prod this is the
+// app origin (sajian.app). In dev we trust window.location.origin
+// because both sides run on localhost.
+//
+// `NEXT_PUBLIC_APP_ORIGIN` wins if set. Otherwise we infer from the
+// current window: when we're actually on preview.sajian.app (or any
+// sajian.app subdomain serving the preview route) we default the
+// parent to https://sajian.app so the postMessage filter accepts the
+// real parent even when the env var was forgotten. Without this
+// default, an unset env makes the preview silently discard every
+// draft update and render blank.
 export function configuredAppOrigin(): string | null {
   const raw = process.env.NEXT_PUBLIC_APP_ORIGIN;
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  return normalizeOrigin(trimmed);
+  if (raw) {
+    const trimmed = raw.trim();
+    if (trimmed) return normalizeOrigin(trimmed);
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const here = new URL(window.location.origin);
+      if (here.hostname === 'preview.sajian.app') return 'https://sajian.app';
+    } catch {
+      // fallthrough
+    }
+  }
+  return null;
 }
