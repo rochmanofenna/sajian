@@ -48,14 +48,57 @@ function buildLogoPrompt(body: Body, styleHint: string): string {
   // etc. Generate an ICON-ONLY mark and let the frontend render the
   // restaurant name with real CSS typography next to it. This is how
   // professional brands actually compose a lockup anyway.
-  return `Design a professional restaurant brand ICON for "${body.name}". ${foodLine} ${colorLine}
+  //
+  // DALL·E 3 ignores negative prompts ~20% of the time, so we ALSO run a
+  // vision-based text detector downstream and drop any output that
+  // contains readable text.
+  return `Design a professional restaurant brand ICON. ${foodLine} ${colorLine}
 Style: ${styleHint}.
-- Icon-only symbol or monogram-free glyph — think a polished app-icon mark.
-- NO text, NO letters, NO words, NO numbers, NO typography of any kind. Absolutely none. If you would draw a word, draw the subject of that word instead.
-- No slogans, no taglines, no "est." dates, no watermarks, no signage strings.
-- Centered, crisp composition, clean background (solid color or subtle gradient).
-- Readable at 32px (app icon) and 512px (sign). Vector-clean silhouette.
+
+CRITICAL: absolutely NO text of any kind in the image.
+- NO letters, NO words, NO numbers, NO writing, NO typography, NO slogans, NO taglines, NO establishment dates, NO watermarks, NO signage strings, NO captions, NO menu text.
+- If you are tempted to draw a word, draw the subject of that word instead (e.g., instead of writing "BURGER" draw a burger; instead of writing "COFFEE" draw a coffee cup).
+- The canvas must read as a pure symbol or glyph. A typographer would look at this and say "there is not a single letterform here."
+
+Composition:
+- Icon-only mark — like a polished app icon, sticker, or monogram-free glyph.
+- Centered, crisp, clean background (solid color or subtle gradient).
+- Readable at 32px (favicon) and 512px (sign). Vector-clean silhouette.
 - Looks designed by a professional branding agency, NOT clip art, NOT AI-scraped stock imagery.`;
+}
+
+// DALL·E 3 ignores the "no text" instruction often enough that we can't
+// trust it alone. Ask GPT-4o's vision endpoint whether the generated image
+// contains readable letters or numbers. Returns true when the image is
+// clean (or when the check itself errors — we fail-open so a moderation
+// outage doesn't wipe out the whole logo picker).
+async function isTextFree(
+  openai: ReturnType<typeof import('@/lib/ai/openai').getOpenAI>,
+  imageUrl: string,
+): Promise<boolean> {
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 4,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Does this image contain any readable text, letters, numbers, or words? Reply with exactly one word: YES or NO.',
+            },
+            { type: 'image_url', image_url: { url: imageUrl, detail: 'low' } },
+          ],
+        },
+      ],
+    });
+    const answer = (res.choices[0]?.message?.content ?? '').trim().toUpperCase();
+    return answer.startsWith('NO');
+  } catch (err) {
+    console.warn('[generate-logo] text-detection skipped:', err);
+    return true;
+  }
 }
 
 const STYLE_HINTS = [
@@ -86,30 +129,43 @@ export async function POST(req: Request) {
     const service = createServiceClient();
 
     // Preferred: DALL-E 3 produces three variants in parallel. Each is
-    // downloaded and stashed in Supabase so the 1-hour OpenAI URLs don't
-    // matter — the owner can revisit the options later in /setup.
+    // downloaded, vision-checked for stray text, and stashed in Supabase
+    // so the 1-hour OpenAI URLs don't matter — the owner can revisit the
+    // options later in /setup. Options that fail the text check are
+    // regenerated up to 2 additional times before we give up on them.
     if (hasOpenAI()) {
       const openai = getOpenAI();
-      const tasks = STYLE_HINTS.map((hint) =>
-        openai.images.generate({
+
+      async function generateOne(hint: string, attempt = 1): Promise<string | null> {
+        const gen = await openai.images.generate({
           model: 'dall-e-3',
           prompt: buildLogoPrompt(body, hint),
           n: 1,
           size: '1024x1024',
           quality: 'standard',
           style: 'vivid',
-        }),
-      );
-      const results = await Promise.allSettled(tasks);
+        });
+        const url = gen.data?.[0]?.url;
+        if (!url) return null;
+        const clean = await isTextFree(openai, url);
+        if (!clean && attempt < 3) {
+          console.warn(
+            `[generate-logo] text detected on ${hint} attempt ${attempt}, regenerating`,
+          );
+          return generateOne(hint, attempt + 1);
+        }
+        return url;
+      }
+
+      const urls = (await Promise.allSettled(STYLE_HINTS.map((h) => generateOne(h))))
+        .filter(
+          (r): r is PromiseFulfilledResult<string | null> =>
+            r.status === 'fulfilled' && Boolean(r.value),
+        )
+        .map((r) => r.value as string);
 
       const logos: string[] = [];
-      for (const result of results) {
-        if (result.status !== 'fulfilled') {
-          console.error('[generate-logo] dall-e call failed:', result.reason);
-          continue;
-        }
-        const url = result.value.data?.[0]?.url;
-        if (!url) continue;
+      for (const url of urls) {
         try {
           const buf = await downloadImage(url);
           const path = `user-${user.id}/logos/${nanoid()}.png`;
