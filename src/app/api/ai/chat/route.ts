@@ -133,6 +133,69 @@ const SYSTEM = (draft: TenantDraft) => {
     draft,
   )}\n\`\`\`\n\nAvailable section types and their variants:\n\`\`\`\n${sectionCatalog()}\n\`\`\`\n\nEditable props per section type (route layout/copy requests through update_section_props — NEVER refuse these):\n\`\`\`\n${sectionPropsCatalog()}\n\`\`\``;
 
+  // Full codegen capability documentation. Claude uses this when no
+  // existing section/variant/slot can express the request. DECISION
+  // ORDER is strict — prefer section variants and slot props; reach
+  // for add_custom_section only when interactivity/composition truly
+  // needs it. This block trades ~800 tokens of prompt budget for the
+  // retry-free rate of add_custom_section.
+  const codegenCapabilities = `
+
+CODEGEN CAPABILITIES (last resort — see DECISION ORDER below):
+
+DECISION ORDER (strict):
+1. Existing section variant handles it → update_section_variant
+2. Section props + slot props handle it → update_section_props with a slot tree (primitives in structured JSON)
+3. Neither fits → add_custom_section with source_jsx
+
+Prefer (1) and (2) — faster, cheaper, more stable. Reach for (3) only when the request genuinely needs conditional rendering, local state (useState), or composition the slot tree can't express.
+
+AVAILABLE PRIMITIVES (the ONLY components you may use in source_jsx):
+
+  <Motion as enter enter_delay_ms enter_duration_ms enter_trigger hover loop className style>
+    Wraps children with animations. Presets only.
+    enter: fade | slide-up | slide-down | slide-left | slide-right | scale | blur | none
+    enter_trigger: mount | in-view | in-view-once
+    hover: lift | scale | glow | tilt | none
+    loop: float | pulse | spin-slow | none
+  <Overlay anchor offset_x offset_y z>
+    Absolute-positioned child of a relative parent.
+    anchor: top-left | top-right | bottom-left | bottom-right | top-center | bottom-center | center-left | center-right | center
+    offset_x/_y: -500 to 500 px. z: 0 to 50.
+  <Stack direction align justify gap wrap>
+    direction: row | col
+    gap: 0 | 2 | 4 | 6 | 8 | 12 | 16 | 24 | 32 (only these exact values)
+  <Box padding margin width height background border_radius className style>
+    Generic container.
+  <Countdown target_iso format expired_text on_expire>
+    format: dhms | hms | ms | days-only
+    on_expire: hide | show-expired-text | keep
+  <Scheduled start_iso end_iso>     // renders children only inside the window
+  <TimeOfDay from_hour to_hour>     // renders children only inside local hours
+  <Text content style>
+  <Image src alt style>             // src: https://* from allowlist OR /relative
+  <Button content href size style>  // href only, no onClick
+  <Icon name size style>            // name from: sparkles, heart, star, arrow-right, phone, mail, map-pin, clock, shopping-bag, utensils, coffee, flame, check-circle, alert-circle
+
+ALLOWED HOOKS in source_jsx: useState, useMemo. Nothing else.
+ALLOWED LOWERCASE TAGS: div, span, p, h1-h6, ul, ol, li, section, article, nav, header, footer, main, img, a, button.
+
+FORBIDDEN (compiler will reject — don't even try):
+- import / export / require (primitives are injected automatically)
+- useEffect, useRef, useLayoutEffect, useCallback, custom hooks
+- fetch, window, document, localStorage, sessionStorage, setTimeout, setInterval, Function, eval, navigator, location, history, crypto
+- onClick / onChange / onSubmit / any on* handler — no event handlers. Interactivity comes from <Button href>, <Motion hover/loop>, <Countdown>, <Scheduled>, <TimeOfDay>.
+- dangerouslySetInnerHTML, ref, spread attributes {...props}
+- new, throw, try/catch, regex literals, tagged templates, ++/--, assignment outside hook setters
+- Any string containing javascript:, data:text/html, or vbscript:
+- Member access on constructor, __proto__, prototype
+
+STYLE: Tailwind classes via className preferred. style prop accepts a plain object with keys from the SafeStyle whitelist (colors as hex/rgba, sizes in px/%/em, transforms with translate/rotate/scale only). No matrix(), no calc(), no custom @keyframes.
+
+SIZE LIMIT: source_jsx ≤ 8000 chars, ≤ 200 lines. Split or simplify if longer.
+
+RESPONSE TO OWNER on codegen: say what you built in one casual sentence; NEVER paste the JSX back in the chat bubble.`;
+
   return `${header}
 
 Speak casual, friendly Bahasa Indonesia (like chatting with a friend — not formal). Keep replies short: 1–3 sentences. Do NOT use emojis or decorative symbols — the UI is editorial and emojis read as tacky. Plain text only.
@@ -140,7 +203,7 @@ Speak casual, friendly Bahasa Indonesia (like chatting with a friend — not for
 Current draft state:
 \`\`\`json
 ${JSON.stringify(draft, null, 2)}
-\`\`\`${menuContext}${sectionContext}
+\`\`\`${menuContext}${sectionContext}${codegenCapabilities}
 
 ${goals}
 
@@ -164,6 +227,10 @@ When the user requests concrete changes, append one OR MORE action markers at th
   <!--ACTION:{"type":"reorder_sections","order":["hero","featured_items","gallery","about","contact"]}-->
   <!--ACTION:{"type":"add_section","section_type":"canvas","variant":"freeform","position":"after:hero","props":{"height_vh":70,"background":{"kind":"image","value":"https://.../bg.jpg"},"elements":[{"id":"e1","kind":"text","content":"Sate Taichan Uda","position":{"anchor":"center","offset_x":0,"offset_y":-20},"size":{"width":"auto","height":"auto"},"style":{"color":"#FFFFFF","font_size":48,"font_weight":700}},{"id":"e2","kind":"button","content":"Pesan Sekarang","href":"/menu","position":{"anchor":"bottom-right","offset_x":24,"offset_y":24},"size":{"width":"auto","height":"auto"},"style":{"background":"#CD7F32","color":"#FFFFFF","padding":16,"border_radius":999}}]}}-->
   <!--ACTION:{"type":"generate_section_image","section_id":"<id>","prompt":"suasana hangat meja kayu","prop_key":"image_url"}-->
+  <!--ACTION:{"type":"add_custom_section","position":"after:hero","source_jsx":"<Motion enter=\\"slide-up\\" hover=\\"lift\\"><Overlay anchor=\\"bottom-right\\" offset_x={24} offset_y={24}><Button content=\\"Pesan Sekarang\\" href=\\"/menu\\" size=\\"md\\" /></Overlay></Motion>"}-->
+  <!--ACTION:{"type":"add_custom_section","position":"after:hero","source_jsx":"<Box padding={24}><Stack direction=\\"col\\" align=\\"center\\" gap={12}><Text content=\\"Diskon Lebaran\\" style={{\\"font-size\\":32,\\"font-weight\\":700,\\"color\\":\\"#CD7F32\\"}} /><Countdown target_iso=\\"2026-04-10T00:00:00+07:00\\" format=\\"dhms\\" on_expire=\\"hide\\" /><Button content=\\"Pesan Sekarang\\" href=\\"/menu\\" size=\\"lg\\" /></Stack></Box>"}-->
+  <!--ACTION:{"type":"add_custom_section","position":"before:contact","source_jsx":"<TimeOfDay from_hour={17} to_hour={21}><Box background=\\"#FFF3E0\\" padding={16}><Text content=\\"Promo happy hour: 20% semua minuman\\" /></Box></TimeOfDay>"}-->
+  <!--ACTION:{"type":"update_custom_section","section_id":"<id>","source_jsx":"<Motion enter=\\"fade\\"><Text content=\\"Updated\\" /></Motion>"}-->
   <!--ACTION:{"type":"generate_hero_image","prompt":"ambience coffee shop di sore hari"}-->
   <!--ACTION:{"type":"set_template","template":"kedai"}-->
   <!--ACTION:{"type":"ready_to_launch"}-->

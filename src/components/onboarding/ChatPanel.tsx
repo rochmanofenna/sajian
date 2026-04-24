@@ -127,6 +127,12 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       case 'generate_hero_image':
         await generateHeroImage(action.prompt);
         break;
+      case 'add_custom_section':
+        await applyAddCustomSection(action.source_jsx, action.position);
+        break;
+      case 'update_custom_section':
+        await applyUpdateCustomSection(action.section_id, action.source_jsx);
+        break;
       case 'set_template':
         await patchDraft({ theme_template: action.template });
         break;
@@ -269,6 +275,150 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       return false;
     } finally {
       setUploading(null);
+    }
+  }
+
+  // Add-custom-section flow with one automatic retry. We create an
+  // empty custom section first so /api/sections/compile has a row to
+  // write into, then POST the source_jsx. On sanitizer / compile
+  // failure we fire a follow-up turn to Claude with the error
+  // appended, accept its retry emit, and try one more time. Two
+  // failures → owner gets a short "ada kendala" message and we log
+  // the double failure for prompt tuning.
+  async function applyAddCustomSection(
+    sourceJsx: string,
+    position: 'start' | 'end' | `after:${string}` | `before:${string}` | undefined,
+  ): Promise<void> {
+    const sectionId = await addSection({
+      type: 'custom',
+      variant: 'codegen',
+      props: {},
+      position,
+    });
+    if (!sectionId) return;
+    await compileWithRetry(sectionId, sourceJsx);
+  }
+
+  async function applyUpdateCustomSection(sectionId: string, sourceJsx: string): Promise<void> {
+    await compileWithRetry(sectionId, sourceJsx);
+  }
+
+  async function callCompile(
+    sectionId: string,
+    sourceJsx: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    try {
+      const res = await fetch('/api/sections/compile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section_id: sectionId, source_jsx: sourceJsx }),
+      });
+      const body = await res.json();
+      if (res.ok && body.ok) return { ok: true };
+      const stage = typeof body.stage === 'string' ? body.stage : 'unknown';
+      const errMsg =
+        typeof body?.error === 'object' && body.error
+          ? (body.error as { message?: string }).message ?? JSON.stringify(body.error)
+          : typeof body?.error === 'string'
+            ? body.error
+            : `compile failed (${stage})`;
+      return { ok: false, error: `[${stage}] ${errMsg}` };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message };
+    }
+  }
+
+  async function requestRetryFromAi(
+    sectionId: string,
+    previousSource: string,
+    error: string,
+  ): Promise<string | null> {
+    const retryPrompt = `The source_jsx you just emitted for section ${sectionId} failed to compile:
+
+ERROR: ${error}
+
+The source was:
+\`\`\`jsx
+${previousSource}
+\`\`\`
+
+Rewrite the source_jsx to fix this. Use only the allowed primitives (Motion, Overlay, Stack, Box, Countdown, Scheduled, TimeOfDay, Text, Image, Button, Icon) and hooks (useState, useMemo). Emit exactly one update_custom_section action targeting this section_id. Keep it simple.`;
+
+    try {
+      const history = [
+        ...messages,
+        { role: 'user' as const, content: retryPrompt, kind: 'text' as const },
+      ]
+        .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
+        .map((m) => ({ role: m.role, content: m.content }));
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history, draft }),
+      });
+      const body = await res.json();
+      if (!res.ok) return null;
+      const actions = Array.isArray(body.actions) ? body.actions : [];
+      for (const a of actions) {
+        if (
+          a?.type === 'update_custom_section' &&
+          a.section_id === sectionId &&
+          typeof a.source_jsx === 'string'
+        ) {
+          return a.source_jsx as string;
+        }
+        if (a?.type === 'add_custom_section' && typeof a.source_jsx === 'string') {
+          return a.source_jsx as string;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function compileWithRetry(sectionId: string, sourceJsx: string): Promise<void> {
+    let attempt = 1;
+    let currentSource = sourceJsx;
+    while (attempt <= 2) {
+      const result = await callCompile(sectionId, currentSource);
+      if (result.ok) {
+        if (attempt > 1) {
+          await pushMessage({
+            role: 'assistant',
+            content: 'Udah aku benerin — cek preview ya.',
+            kind: 'text',
+          });
+        }
+        return;
+      }
+      console.warn('[codegen] compile failed', { sectionId, attempt, error: result.error });
+      if (attempt >= 2) {
+        console.error('[codegen] double failure', {
+          sectionId,
+          source_excerpt: currentSource.slice(0, 400),
+          final_error: result.error,
+        });
+        await pushMessage({
+          role: 'assistant',
+          content:
+            'Aku coba bikin fitur itu tapi ada kendala teknis. Coba minta dengan cara lain atau pecah jadi langkah lebih kecil.',
+          kind: 'text',
+        });
+        return;
+      }
+      const retrySource = await requestRetryFromAi(sectionId, currentSource, result.error);
+      if (!retrySource) {
+        await pushMessage({
+          role: 'assistant',
+          content:
+            'Aku coba bikin fitur itu tapi ada kendala. Coba minta dengan kata lain atau lebih spesifik.',
+          kind: 'text',
+        });
+        return;
+      }
+      currentSource = retrySource;
+      attempt += 1;
     }
   }
 
