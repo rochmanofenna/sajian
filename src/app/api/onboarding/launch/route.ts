@@ -15,31 +15,44 @@ import { isKnownSection } from '@/lib/storefront/section-registry';
 // Idempotent: wipes the tenant's existing sections and inserts the draft
 // stack in order. Keeps sort_order contiguous so the renderer always lists
 // them in author-intended sequence.
+//
+// Intentionally best-effort — if migration 006 hasn't been applied yet, or
+// RLS trips, the tenant is already created and we don't want to roll the
+// whole launch back over section seeding. We log loudly and continue; the
+// owner can re-run setup to retry sections, or the live storefront will
+// fall back to the legacy template.
 async function persistSections(
   service: ReturnType<typeof createServiceClient>,
   tenantId: string,
   sections: StorefrontSection[] | undefined,
-) {
+): Promise<void> {
   if (!sections || sections.length === 0) return;
-  const { error: delErr } = await service
-    .from('storefront_sections')
-    .delete()
-    .eq('tenant_id', tenantId);
-  if (delErr) throw delErr;
+  try {
+    const { error: delErr } = await service
+      .from('storefront_sections')
+      .delete()
+      .eq('tenant_id', tenantId);
+    if (delErr) throw delErr;
 
-  const rows = sections
-    .filter((s) => isKnownSection(s.type))
-    .map((s, idx) => ({
-      tenant_id: tenantId,
-      type: s.type,
-      variant: s.variant,
-      sort_order: idx * 10,
-      props: s.props ?? {},
-      is_visible: s.is_visible !== false,
-    }));
-  if (rows.length === 0) return;
-  const { error: insErr } = await service.from('storefront_sections').insert(rows);
-  if (insErr) throw insErr;
+    const rows = sections
+      .filter((s) => isKnownSection(s.type))
+      .map((s, idx) => ({
+        tenant_id: tenantId,
+        type: s.type,
+        variant: s.variant,
+        sort_order: idx * 10,
+        props: s.props ?? {},
+        is_visible: s.is_visible !== false,
+      }));
+    if (rows.length === 0) return;
+    const { error: insErr } = await service.from('storefront_sections').insert(rows);
+    if (insErr) throw insErr;
+  } catch (err) {
+    console.error(
+      `[launch] persistSections failed for tenant=${tenantId}:`,
+      err,
+    );
+  }
 }
 
 export async function POST() {
@@ -169,7 +182,18 @@ export async function POST() {
     });
 
     if (error) {
-      if (error.message.includes('slug taken')) {
+      // Log verbosely — Supabase returns PostgrestError (not Error) so the
+      // generic path would previously print "[object Object]". We want the
+      // real Postgres code / message in Vercel logs.
+      console.error('[launch] onboarding_launch RPC failed:', {
+        slug,
+        user_id: user.id,
+        message: error.message,
+        code: (error as { code?: string }).code,
+        details: (error as { details?: string }).details,
+        hint: (error as { hint?: string }).hint,
+      });
+      if (error.message?.includes('slug taken')) {
         return NextResponse.json({ error: 'Nama sudah dipakai. Coba nama lain.' }, { status: 409 });
       }
       throw error;

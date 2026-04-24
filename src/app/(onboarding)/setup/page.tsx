@@ -177,9 +177,17 @@ export default function SetupPage() {
     try {
       const res = await fetch('/api/onboarding/launch', { method: 'POST' });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? 'Gagal meluncurkan');
+      if (!res.ok) {
+        const traceHint = body.request_id
+          ? ` (ref: ${String(body.request_id).slice(0, 8)})`
+          : '';
+        throw new Error(
+          (body.error ? `${body.error}${traceHint}` : `Gagal meluncurkan${traceHint}`),
+        );
+      }
       router.push(`/setup/launch?slug=${encodeURIComponent(body.slug)}`);
     } catch (e) {
+      console.error('[launch] failed', e);
       setLaunchError((e as Error).message);
       setLaunching(false);
     }
