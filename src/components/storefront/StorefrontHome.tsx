@@ -5,7 +5,7 @@
 import type { PublicTenant } from '@/lib/tenant';
 import { getTemplate } from './templates';
 import { StoreFooter } from './StoreFooter';
-import { StorefrontRenderer } from './StorefrontRenderer';
+import { StorefrontRendererServer } from './StorefrontRenderer.server';
 import {
   buildSectionContext,
   getStorefrontSections,
@@ -22,7 +22,7 @@ export async function StorefrontHome({ tenant }: { tenant: PublicTenant }) {
         style={{ background: tenant.colors.background, color: tenant.colors.dark }}
       >
         <div className="flex-1">
-          <StorefrontRenderer sections={sections} ctx={ctx} tenantId={tenant.id} />
+          <StorefrontRendererServer sections={sections} ctx={ctx} tenantId={tenant.id} />
         </div>
         <StoreFooter tenant={tenant} />
       </div>

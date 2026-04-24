@@ -13,14 +13,33 @@ export async function getStorefrontSections(
   const sb = createServiceClient();
   const { data, error } = await sb
     .from('storefront_sections')
-    .select('id, type, variant, sort_order, props, is_visible')
+    .select(
+      'id, type, variant, sort_order, props, is_visible, source_jsx, slot_tree, compiled_code, code_hash, compile_status, compile_error',
+    )
     .eq('tenant_id', tenantId)
     .order('sort_order', { ascending: true });
   if (error) {
     console.error('[storefront] fetch sections failed:', error.message);
     return [];
   }
-  return (data ?? []) as StorefrontSection[];
+  // For custom sections, merge the top-level codegen columns into `props`
+  // so CustomSection receives them without a second DB read.
+  return (data ?? []).map((row) => {
+    const r = row as StorefrontSection & Record<string, unknown>;
+    if (r.type === 'custom') {
+      const merged = {
+        ...(r.props ?? {}),
+        source_jsx: r.source_jsx ?? null,
+        slot_tree: r.slot_tree ?? null,
+        compiled_code: r.compiled_code ?? null,
+        code_hash: r.code_hash ?? null,
+        compile_status: r.compile_status ?? null,
+        compile_error: r.compile_error ?? null,
+      };
+      return { ...r, props: merged as Record<string, unknown> };
+    }
+    return r;
+  }) as StorefrontSection[];
 }
 
 export async function buildSectionContext(

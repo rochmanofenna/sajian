@@ -17,7 +17,13 @@ import type { SectionComponentProps } from './section-types';
 
 type SectionComponent = React.ComponentType<SectionComponentProps>;
 
-export const SECTION_REGISTRY: Record<SectionType, SectionComponent> = {
+// NOTE: the `custom` section isn't registered here. CustomSection lives
+// in a server-only module (it depends on @mdx-js/mdx at render time),
+// and this registry is imported from client components (PreviewClient).
+// The live storefront renderer (server component) handles `type='custom'`
+// inline by dynamic-importing CustomSection so the MDX graph never
+// enters the client bundle.
+export const SECTION_REGISTRY: Partial<Record<SectionType, SectionComponent>> = {
   hero: Hero as SectionComponent,
   about: About as SectionComponent,
   featured_items: FeaturedItems as SectionComponent,
@@ -31,6 +37,22 @@ export const SECTION_REGISTRY: Record<SectionType, SectionComponent> = {
   canvas: Canvas as SectionComponent,
 };
 
+// List of all known section types including the server-only `custom`.
+const ALL_SECTION_TYPES: readonly SectionType[] = [
+  'hero',
+  'about',
+  'featured_items',
+  'gallery',
+  'promo',
+  'contact',
+  'testimonials',
+  'social',
+  'location',
+  'announcement',
+  'canvas',
+  'custom',
+];
+
 export function isKnownSection(type: string): type is SectionType {
-  return Object.prototype.hasOwnProperty.call(SECTION_REGISTRY, type);
+  return (ALL_SECTION_TYPES as readonly string[]).includes(type);
 }

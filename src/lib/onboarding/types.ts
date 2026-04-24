@@ -50,7 +50,8 @@ export type SectionType =
   | 'social'
   | 'location'
   | 'announcement'
-  | 'canvas';
+  | 'canvas'
+  | 'custom';
 
 export interface StorefrontSection {
   id: string;
@@ -129,4 +130,6 @@ export type OnboardingAction =
   | { type: 'reorder_sections'; order: string[] }
   | { type: 'generate_section_image'; section_id: string; prompt?: string; prop_key?: string }
   | { type: 'generate_hero_image'; prompt?: string }
+  | { type: 'add_custom_section'; source_jsx: string; position?: 'start' | 'end' | `after:${string}` | `before:${string}` }
+  | { type: 'update_custom_section'; section_id: string; source_jsx: string }
   | { type: 'ready_to_launch' };

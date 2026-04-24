@@ -10,17 +10,18 @@ export type { SectionType, StorefrontSection } from '@/lib/onboarding/types';
 // route serializes this into Claude's system prompt so the AI only ever
 // picks variants that actually render.
 export const SECTION_VARIANTS: Record<SectionType, readonly string[]> = {
-  hero: ['gradient', 'minimal', 'split', 'fullscreen', 'editorial'],
+  hero: ['gradient', 'minimal', 'split', 'fullscreen', 'editorial', 'video'],
   about: ['simple', 'with_image', 'story'],
   featured_items: ['horizontal', 'grid', 'spotlight'],
   gallery: ['grid', 'carousel', 'featured'],
-  promo: ['banner', 'card', 'countdown'],
+  promo: ['banner', 'card', 'countdown', 'floating'],
   contact: ['simple', 'with_map'],
   testimonials: ['cards', 'quotes', 'grid'],
   social: ['icons', 'feed'],
   location: ['map'],
   announcement: ['bar', 'modal'],
   canvas: ['freeform'],
+  custom: ['codegen'],
 };
 
 // Props every section receives in addition to its own `props` bag. These
