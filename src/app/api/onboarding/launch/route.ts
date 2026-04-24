@@ -12,6 +12,27 @@ import { generateSlug, isValidSlug } from '@/lib/onboarding/slug';
 import type { TenantDraft, StorefrontSection } from '@/lib/onboarding/types';
 import { isKnownSection } from '@/lib/storefront/section-registry';
 
+// Returns `desired` if it's free (ignoring the current tenant id), else
+// suffixes -2, -3, etc. until a free slug is found. Bounded to 20 attempts
+// to avoid infinite loops on absurd inputs.
+async function pickAvailableSlug(
+  service: ReturnType<typeof createServiceClient>,
+  desired: string,
+  currentTenantId: string | null,
+): Promise<string> {
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    const candidate = attempt === 1 ? desired : `${desired}-${attempt}`;
+    const { data } = await service
+      .from('tenants')
+      .select('id')
+      .eq('slug', candidate)
+      .maybeSingle();
+    if (!data) return candidate;
+    if (currentTenantId && data.id === currentTenantId) return candidate;
+  }
+  return `${desired}-${Date.now().toString(36)}`;
+}
+
 // Idempotent: wipes the tenant's existing sections and inserts the draft
 // stack in order. Keeps sort_order contiguous so the renderer always lists
 // them in author-intended sequence.
@@ -109,15 +130,30 @@ export async function POST() {
         .eq('id', existing.id)
         .maybeSingle();
 
-      const tenantUpdate: Record<string, unknown> = {
-        name: payload.name,
-        tagline: payload.tagline ?? null,
-        colors: payload.colors ?? null,
-        theme_template: payload.theme_template ?? null,
-        logo_url: payload.logo_url ?? null,
-        hero_image_url: payload.hero_image_url ?? null,
-        operating_hours: payload.operating_hours ?? null,
-      };
+      // Build the patch by only including keys the draft actually carries.
+      // `colors` and `theme_template` are NOT NULL on the tenants table — if
+      // we set them to null (because the draft field was undefined) the
+      // UPDATE fails with "null value in column ... violates not-null
+      // constraint". Explicit omission leaves the existing values alone,
+      // which is the right behavior for a partial edit.
+      const tenantUpdate: Record<string, unknown> = { name: payload.name };
+      if (payload.tagline !== undefined) tenantUpdate.tagline = payload.tagline;
+      if (payload.logo_url !== undefined) tenantUpdate.logo_url = payload.logo_url;
+      if (payload.hero_image_url !== undefined) tenantUpdate.hero_image_url = payload.hero_image_url;
+      if (payload.operating_hours !== undefined) tenantUpdate.operating_hours = payload.operating_hours;
+      if (payload.colors) tenantUpdate.colors = payload.colors;
+      if (payload.theme_template) tenantUpdate.theme_template = payload.theme_template;
+
+      // If the owner changed their name such that the slug derived from it
+      // no longer matches the live slug, migrate the subdomain. Collisions
+      // against other tenants get suffixed (-2, -3, ...) so the launch
+      // never fails here.
+      const desiredSlug = slug;
+      if (desiredSlug && desiredSlug !== existing.slug) {
+        const finalSlug = await pickAvailableSlug(service, desiredSlug, existing.id);
+        if (finalSlug !== existing.slug) tenantUpdate.slug = finalSlug;
+      }
+
       const { error: updateErr } = await service
         .from('tenants')
         .update(tenantUpdate)
@@ -166,9 +202,16 @@ export async function POST() {
 
       await persistSections(service, existing.id, payload.sections);
 
+      // Re-read the final slug — it may have been migrated above.
+      const { data: after } = await service
+        .from('tenants')
+        .select('slug')
+        .eq('id', existing.id)
+        .maybeSingle();
+
       return NextResponse.json({
         tenant_id: existing.id,
-        slug: existing.slug,
+        slug: after?.slug ?? existing.slug,
         updated: true,
         menu_skipped: isEsb,
       });
