@@ -50,14 +50,17 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const tenant = await getTenant();
 
-  const themeStyle = tenant
-    ? ({
-        '--color-primary': tenant.colors.primary,
-        '--color-accent': tenant.colors.accent,
-        '--color-background': tenant.colors.background,
-        '--color-dark': tenant.colors.dark,
-      } as React.CSSProperties)
-    : undefined;
+  // Always emit the tenant color variables — apex / app pages fall
+  // back to neutral Sajian defaults so `bg-[var(--color-background)]`
+  // on <body> resolves to a real color instead of an unset var (which
+  // strips the page to transparent bg + unstyled text, making the
+  // whole admin dashboard read as "CSS didn't load").
+  const themeStyle = {
+    '--color-primary': tenant?.colors.primary ?? '#111827',
+    '--color-accent': tenant?.colors.accent ?? '#6B7280',
+    '--color-background': tenant?.colors.background ?? '#FFFFFF',
+    '--color-dark': tenant?.colors.dark ?? '#0F172A',
+  } as React.CSSProperties;
 
   const template = tenant?.theme_template ?? 'modern';
 

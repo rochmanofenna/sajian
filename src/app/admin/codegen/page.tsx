@@ -51,7 +51,7 @@ export default async function CodegenOpsPage() {
   const operator = await getAdminOperatorOrNull();
   if (!operator) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-zinc-50 px-6">
+      <div className="flex items-center justify-center py-24 px-6">
         <div className="max-w-sm text-center space-y-4">
           <h1 className="text-xl font-semibold">Tidak tersedia</h1>
           <p className="text-sm text-zinc-600">
@@ -62,7 +62,7 @@ export default async function CodegenOpsPage() {
             .
           </p>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -159,22 +159,20 @@ export default async function CodegenOpsPage() {
   } | null;
 
   return (
-    <main className="min-h-screen bg-zinc-50 py-8 px-4">
-      <div className="max-w-6xl mx-auto">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Codegen ops</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Operator: {operator.email ?? operator.userId}. Window: last 24h.
-          </p>
-        </header>
+    <div>
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Codegen ops</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          Operator: {operator.email ?? operator.userId}. Window: last 24h.
+        </p>
+      </header>
 
-        <CodegenOpsClient
-          globalState={globalState}
-          tenants={summaries}
-          events={events}
-          trips={trips}
-        />
-      </div>
-    </main>
+      <CodegenOpsClient
+        globalState={globalState}
+        tenants={summaries}
+        events={events}
+        trips={trips}
+      />
+    </div>
   );
 }
