@@ -193,7 +193,13 @@ export async function POST() {
               price: item.price,
               description: item.description ?? null,
               sort_order: itemIdx++,
-              is_available: true,
+              // Preserve whatever the draft set. Dropping these silently
+              // was the "menu photos never reach live" bug — customers saw
+              // blank tiles after every re-launch because the EDIT insert
+              // didn't carry image_url / tags / availability through.
+              is_available: item.is_available !== false,
+              image_url: item.image_url ?? null,
+              tags: item.tags ?? [],
             });
             if (itemErr) throw itemErr;
           }
