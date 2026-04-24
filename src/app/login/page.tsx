@@ -1,35 +1,43 @@
-// sajian.app/login — owner re-entry. Phone OTP, session-skip, tenant-aware
-// redirect. Matches the editorial warmth of /signup and /setup so the owner
-// never feels like they fell out of the Sajian world.
+// sajian.app/login — owner re-entry. Email OTP by default (Supabase's
+// built-in Resend provider is the only reliable path today), phone OTP
+// available as a tab but gracefully degrades if SMS isn't provisioned.
+// Indonesian error copy throughout, tenant-aware redirect on success.
 
 'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Phone, KeyRound } from 'lucide-react';
+import { Loader2, Mail, Phone, KeyRound } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { PageNav } from '@/components/chrome/PageNav';
-import { formatIdPhoneDisplay, isLikelyIdPhone, normalizeIdPhone } from '@/lib/auth/phone';
+import {
+  formatIdPhoneDisplay,
+  isLikelyEmail,
+  isLikelyIdPhone,
+  normalizeIdPhone,
+} from '@/lib/auth/phone';
+import { mapAuthError, isMethodUnavailable, type AuthMethod } from '@/lib/auth/error-map';
 
-type Stage = 'checking' | 'phone' | 'otp' | 'redirecting';
+type Stage = 'checking' | 'identify' | 'otp' | 'redirecting';
 
 export default function LoginPage() {
   const supabase = createClient();
   const [stage, setStage] = useState<Stage>('checking');
-  const [phone, setPhone] = useState('');
+  const [method, setMethod] = useState<AuthMethod>('email');
+  const [identifier, setIdentifier] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
 
-  // Session-skip: if the user already has a Supabase session, jump straight
-  // to their admin. On a tenant subdomain we verify ownership of that tenant
-  // specifically; on apex we find whatever active tenant they own.
+  // Session-skip: if the user already has a session, jump straight to admin.
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
-        setStage('phone');
+        setStage('identify');
         return;
       }
       setHint('Sudah masuk — membuka dashboard…');
@@ -54,7 +62,6 @@ export default function LoginPage() {
         window.location.href = '/admin';
         return;
       }
-      // Fall through to apex-style lookup if subdomain tenant isn't owned by this user.
     }
 
     const { data: owned } = await supabase
@@ -67,7 +74,7 @@ export default function LoginPage() {
 
     const slug = owned?.[0]?.slug;
     if (!slug) {
-      setStage('phone');
+      setStage('identify');
       setError('Akun ini belum punya toko. Buat toko dulu di /signup.');
       return;
     }
@@ -78,25 +85,46 @@ export default function LoginPage() {
     }
   }
 
-  const canSend = isLikelyIdPhone(phone) && !loading;
-  const normalized = normalizeIdPhone(phone);
-  const display = formatIdPhoneDisplay(phone);
+  const normalizedPhone = normalizeIdPhone(identifier);
+  const phoneDisplay = formatIdPhoneDisplay(identifier);
+  const canSend =
+    !loading &&
+    (method === 'email' ? isLikelyEmail(identifier) : isLikelyIdPhone(identifier));
+
+  function switchMethod(next: AuthMethod) {
+    if (next === method) return;
+    setMethod(next);
+    setIdentifier('');
+    setOtp('');
+    setError(null);
+  }
 
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();
     if (!canSend) {
-      setError('Nomor HP tidak valid');
+      setError(
+        method === 'email' ? 'Masukkan email yang valid.' : 'Nomor HP Indonesia tidak valid.',
+      );
       return;
     }
     setLoading(true);
     setError(null);
+
+    const payload =
+      method === 'email'
+        ? { email: identifier.trim().toLowerCase() }
+        : { phone: normalizedPhone };
+
     const { error } = await supabase.auth.signInWithOtp({
-      phone: normalized,
+      ...payload,
       options: { shouldCreateUser: false },
     });
     setLoading(false);
     if (error) {
-      setError(error.message);
+      setError(mapAuthError(error, { method, stage: 'send' }));
+      if (isMethodUnavailable(error, method) && method === 'phone') {
+        setHint('Ganti ke email — SMS belum aktif di sini.');
+      }
       return;
     }
     setStage('otp');
@@ -106,20 +134,24 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { data, error } = await supabase.auth.verifyOtp({
-      phone: normalized,
-      token: otp,
-      type: 'sms',
-    });
+
+    const payload =
+      method === 'email'
+        ? { email: identifier.trim().toLowerCase(), token: otp, type: 'email' as const }
+        : { phone: normalizedPhone, token: otp, type: 'sms' as const };
+
+    const { data, error } = await supabase.auth.verifyOtp(payload);
     if (error || !data.user) {
       setLoading(false);
-      setError(error?.message ?? 'Kode salah');
+      setError(error ? mapAuthError(error, { method, stage: 'verify' }) : 'Kode verifikasi salah.');
       return;
     }
     setStage('redirecting');
     setHint('Mencari toko kamu…');
     await routeToOwnerAdmin(data.user.id);
   }
+
+  const sentTo = method === 'email' ? identifier.trim().toLowerCase() : phoneDisplay || normalizedPhone;
 
   return (
     <>
@@ -133,8 +165,8 @@ export default function LoginPage() {
             <span className="auth__kicker">Sajian · masuk akun</span>
             <h1 className="auth__title">Masuk ke toko kamu.</h1>
             <p className="auth__sub">
-              Kode 6 digit akan dikirim via SMS ke nomor HP yang kamu pakai saat daftar.
-              Bisa login dari mana aja — kode cuma berlaku 10 menit.
+              Kode 6 digit akan dikirim ke{' '}
+              {method === 'email' ? 'email kamu' : 'nomor HP via SMS'}. Kode cuma berlaku 10 menit.
             </p>
           </header>
 
@@ -145,44 +177,60 @@ export default function LoginPage() {
             </div>
           )}
 
-          {stage === 'phone' && (
-            <form onSubmit={sendOtp} className="auth__form">
-              <label className="auth__field">
-                <span className="auth__label">Nomor WhatsApp</span>
-                <div className="auth__input-wrap">
-                  <Phone className="auth__input-icon" aria-hidden="true" />
-                  <input
-                    type="tel"
-                    required
-                    autoComplete="tel"
-                    inputMode="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="0812 3456 7890"
-                    className="auth__input"
-                  />
-                </div>
-                {display && <span className="mt-1 block text-xs text-zinc-500 font-mono">{display}</span>}
-              </label>
-              <button
-                type="submit"
-                disabled={!canSend}
-                className="auth__submit"
-              >
-                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                Kirim kode via SMS
-              </button>
-              <p className="auth__fine">
-                Baru pertama kali? <Link href="/signup" className="auth__link">Buat toko →</Link>
-              </p>
-            </form>
+          {stage === 'identify' && (
+            <>
+              <MethodToggle method={method} onChange={switchMethod} />
+              <form onSubmit={sendOtp} className="auth__form">
+                <label className="auth__field">
+                  <span className="auth__label">
+                    {method === 'email' ? 'Email' : 'Nomor WhatsApp'}
+                  </span>
+                  <div className="auth__input-wrap">
+                    {method === 'email' ? (
+                      <Mail className="auth__input-icon" aria-hidden="true" />
+                    ) : (
+                      <Phone className="auth__input-icon" aria-hidden="true" />
+                    )}
+                    <input
+                      type={method === 'email' ? 'email' : 'tel'}
+                      required
+                      autoComplete={method === 'email' ? 'email' : 'tel'}
+                      inputMode={method === 'email' ? 'email' : 'tel'}
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      placeholder={method === 'email' ? 'nama@domain.com' : '0812 3456 7890'}
+                      className="auth__input"
+                    />
+                  </div>
+                  {method === 'phone' && phoneDisplay && (
+                    <span className="mt-1 block text-xs text-zinc-500 font-mono">
+                      {phoneDisplay}
+                    </span>
+                  )}
+                </label>
+                <button type="submit" disabled={!canSend} className="auth__submit">
+                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Kirim kode {method === 'email' ? 'via email' : 'via SMS'}
+                </button>
+                <p className="auth__fine">
+                  Baru pertama kali?{' '}
+                  <Link href="/signup" className="auth__link">
+                    Buat toko →
+                  </Link>
+                </p>
+              </form>
+            </>
           )}
 
           {stage === 'otp' && (
             <form onSubmit={verifyOtp} className="auth__form">
               <div className="auth__sent">
-                Kode sudah dikirim ke <strong className="font-mono">{display || normalized}</strong>.{' '}
-                <button type="button" onClick={() => setStage('phone')} className="auth__link">
+                Kode sudah dikirim ke <strong className="font-mono">{sentTo}</strong>.{' '}
+                <button
+                  type="button"
+                  onClick={() => setStage('identify')}
+                  className="auth__link"
+                >
                   Ubah
                 </button>
               </div>
@@ -201,19 +249,20 @@ export default function LoginPage() {
                   />
                 </div>
               </label>
-              <button
-                type="submit"
-                disabled={loading || otp.length < 6}
-                className="auth__submit"
-              >
+              <button type="submit" disabled={loading || otp.length < 6} className="auth__submit">
                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                 Masuk
               </button>
               <p className="auth__fine">
-                Nggak nerima SMS? Tunggu 1 menit lalu{' '}
-                <button type="button" onClick={() => setStage('phone')} className="auth__link">
+                Nggak nerima kode? Tunggu 1 menit lalu{' '}
+                <button
+                  type="button"
+                  onClick={() => setStage('identify')}
+                  className="auth__link"
+                >
                   kirim ulang
-                </button>.
+                </button>
+                .
               </p>
             </form>
           )}
@@ -226,6 +275,9 @@ export default function LoginPage() {
           )}
 
           {error && <div className="auth__error">{error}</div>}
+          {hint && stage === 'identify' && (
+            <div className="mt-3 text-xs text-zinc-500">{hint}</div>
+          )}
         </section>
 
         <footer className="auth__foot">
@@ -235,5 +287,48 @@ export default function LoginPage() {
         </footer>
       </main>
     </>
+  );
+}
+
+function MethodToggle({
+  method,
+  onChange,
+}: {
+  method: AuthMethod;
+  onChange: (next: AuthMethod) => void;
+}) {
+  return (
+    <div
+      className="mb-4 inline-flex rounded-full border border-zinc-200 p-0.5 text-xs"
+      role="group"
+      aria-label="Metode masuk"
+    >
+      <button
+        type="button"
+        onClick={() => onChange('email')}
+        aria-pressed={method === 'email'}
+        className="rounded-full px-3 h-7 font-medium transition"
+        style={
+          method === 'email'
+            ? { background: '#1B5E3B', color: '#fff' }
+            : { color: '#555' }
+        }
+      >
+        Email
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('phone')}
+        aria-pressed={method === 'phone'}
+        className="rounded-full px-3 h-7 font-medium transition"
+        style={
+          method === 'phone'
+            ? { background: '#1B5E3B', color: '#fff' }
+            : { color: '#555' }
+        }
+      >
+        Nomor HP
+      </button>
+    </div>
   );
 }

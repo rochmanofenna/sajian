@@ -11,7 +11,10 @@ export async function updateSession(request: NextRequest) {
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) return response;
 
+  const domain = process.env.NEXT_PUBLIC_COOKIE_DOMAIN;
+
   const supabase = createServerClient(url, anon, {
+    cookieOptions: domain ? { domain, path: '/', sameSite: 'lax' } : undefined,
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -19,13 +22,22 @@ export async function updateSession(request: NextRequest) {
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        cookiesToSet.forEach(({ name, value, options }) => {
+          const merged = domain ? { ...options, domain } : options;
+          response.cookies.set(name, value, merged);
+        });
       },
     },
   });
 
-  // Touch the session so refresh tokens roll forward. Result ignored on purpose.
-  await supabase.auth.getUser();
+  // Touch the session so refresh tokens roll forward. Swallow errors so a
+  // transient Supabase outage doesn't 500 every request — the downstream
+  // handler can still run (it will just see no session).
+  try {
+    await supabase.auth.getUser();
+  } catch (err) {
+    console.warn('[middleware] supabase.auth.getUser failed:', err);
+  }
 
   return response;
 }

@@ -11,8 +11,10 @@ export async function createClient() {
   if (!url || !anon) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env vars');
 
   const cookieStore = await cookies();
+  const domain = process.env.NEXT_PUBLIC_COOKIE_DOMAIN;
 
   return createServerClient(url, anon, {
+    cookieOptions: domain ? { domain, path: '/', sameSite: 'lax' } : undefined,
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -20,7 +22,8 @@ export async function createClient() {
       setAll(cookiesToSet) {
         try {
           cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
+            const merged = domain ? { ...options, domain } : options;
+            cookieStore.set(name, value, merged);
           });
         } catch {
           // Called from a Server Component — `cookies()` is read-only there.
