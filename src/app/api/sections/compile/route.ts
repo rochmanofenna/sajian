@@ -20,6 +20,7 @@ import { compileSection } from '@/lib/storefront/compile';
 import { sanitizeSlotTree, SanitizerError } from '@/lib/storefront/sanitizer';
 import { allow } from '@/lib/ai/rate-limit';
 import { isCodegenEnabled } from '@/lib/feature-flags';
+import { runBreakerChecks } from '@/lib/codegen-circuit-breaker';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -56,6 +57,14 @@ export async function POST(req: Request) {
         { status: 429, headers: { 'Retry-After': String(gate.retryAfter) } },
       );
     }
+
+    // Fire-and-forget breaker evaluation. The hot path already made
+    // the flag decision above; this run updates the tables so the
+    // NEXT request picks up the new state. Cached to 30s per tenant.
+    runBreakerChecks(tenant.id).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('[codegen-breaker] eval failed', err);
+    });
 
     const parsed = bodySchema.safeParse(await req.json());
     if (!parsed.success) {
