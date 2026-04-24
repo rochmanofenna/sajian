@@ -19,6 +19,8 @@ import { NextResponse } from 'next/server';
 import sharp from 'sharp';
 import type Anthropic from '@anthropic-ai/sdk';
 import { getAnthropic, CLAUDE_MODEL, extractJson } from '@/lib/ai/anthropic';
+import { allow, AI_RATE_PROFILES } from '@/lib/ai/rate-limit';
+import { identityKey } from '@/lib/api/auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -53,6 +55,14 @@ function jsonError(message: string, status: number, extra: Record<string, unknow
 }
 
 export async function POST(req: Request) {
+  const key = await identityKey(req);
+  const gate = allow('ai-extract-menu', key, AI_RATE_PROFILES.extract);
+  if (!gate.ok) {
+    return jsonError('Terlalu banyak upload menu. Coba lagi sebentar lagi.', 429, {
+      retryAfter: gate.retryAfter,
+    });
+  }
+
   let form: FormData;
   try {
     form = await req.formData();

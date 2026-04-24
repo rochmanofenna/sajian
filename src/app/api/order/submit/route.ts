@@ -39,6 +39,9 @@ export async function POST(req: Request) {
     const body = parsed.data;
 
     const tenant = await resolveTenant();
+    if (!tenant.is_active) {
+      return badRequest('Toko sedang offline. Coba lagi nanti.');
+    }
     const supabase = createServiceClient();
 
     const subtotal = body.items.reduce((sum, item) => {
@@ -81,8 +84,17 @@ export async function POST(req: Request) {
         return badRequest(`Branch ${body.branchCode} does not support ${body.orderType}`);
       }
 
-      const lat = settings.latitude ?? -6.287;
-      const lng = settings.longitude ?? 106.716;
+      const lat = settings.latitude;
+      const lng = settings.longitude;
+      if (typeof lat !== 'number' || typeof lng !== 'number') {
+        console.error(
+          `[order/submit] branch ${body.branchCode} missing coords in ESB settings`,
+        );
+        return NextResponse.json(
+          { error: 'Pesanan gagal diproses. Coba cabang lain atau hubungi support.' },
+          { status: 502 },
+        );
+      }
 
       const esbPayload = toESBCashierPayload(body, visitPurposeID, lat, lng);
       const esbResponse = (await esb.submitCashierOrder(body.branchCode, esbPayload)) as ESBCashierEnvelope;
@@ -91,8 +103,14 @@ export async function POST(req: Request) {
       const queueNum = esbResponse.queueNum ?? esbResponse.data?.queueNum ?? null;
 
       if (!esbOrderId || !qrData) {
+        // Log the full response server-side for debugging; never echo it to
+        // the client — ESB sometimes returns stack traces in error bodies.
+        console.error(
+          '[order/submit] ESB did not return qrData/orderID:',
+          JSON.stringify(esbResponse).slice(0, 2000),
+        );
         return NextResponse.json(
-          { error: 'ESB did not return qrData or orderID', raw: esbResponse },
+          { error: 'Pesanan gagal diproses di POS. Coba lagi.' },
           { status: 502 },
         );
       }

@@ -7,6 +7,8 @@
 import { NextResponse } from 'next/server';
 import { getAnthropic, CLAUDE_MODEL, extractJson } from '@/lib/ai/anthropic';
 import { errorResponse, badRequest } from '@/lib/api/errors';
+import { allow, AI_RATE_PROFILES } from '@/lib/ai/rate-limit';
+import { identityKey } from '@/lib/api/auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -23,6 +25,15 @@ const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 export async function POST(req: Request) {
   try {
+    const key = await identityKey(req);
+    const gate = allow('ai-extract-colors', key, AI_RATE_PROFILES.extract);
+    if (!gate.ok) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak permintaan. Coba lagi sebentar lagi.' },
+        { status: 429, headers: { 'Retry-After': String(gate.retryAfter) } },
+      );
+    }
+
     const form = await req.formData();
     const photo = form.get('photo');
     if (!(photo instanceof File)) return badRequest('photo required');

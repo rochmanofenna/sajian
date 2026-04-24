@@ -11,6 +11,7 @@ import { getAnthropic, CLAUDE_MODEL } from '@/lib/ai/anthropic';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { errorResponse, badRequest } from '@/lib/api/errors';
+import { allow, AI_RATE_PROFILES } from '@/lib/ai/rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -38,6 +39,14 @@ export async function POST(req: Request) {
       data: { user },
     } = await sb.auth.getUser();
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
+    const gate = allow('ai-generate-logo', `u:${user.id}`, AI_RATE_PROFILES.logo);
+    if (!gate.ok) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak permintaan logo. Coba lagi sebentar lagi.' },
+        { status: 429, headers: { 'Retry-After': String(gate.retryAfter) } },
+      );
+    }
 
     const anthropic = getAnthropic();
     const res = await anthropic.messages.create({

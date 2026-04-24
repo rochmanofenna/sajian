@@ -16,6 +16,8 @@
 import { NextResponse } from 'next/server';
 import { getAnthropic, CLAUDE_MODEL } from '@/lib/ai/anthropic';
 import { errorResponse, badRequest } from '@/lib/api/errors';
+import { allow, AI_RATE_PROFILES } from '@/lib/ai/rate-limit';
+import { identityKey } from '@/lib/api/auth';
 import type { OnboardingAction, TenantDraft } from '@/lib/onboarding/types';
 
 export const runtime = 'nodejs';
@@ -156,6 +158,15 @@ const ESB_FORBIDDEN_ACTIONS = new Set([
 
 export async function POST(req: Request) {
   try {
+    const key = await identityKey(req);
+    const gate = allow('ai-chat', key, AI_RATE_PROFILES.chat);
+    if (!gate.ok) {
+      return NextResponse.json(
+        { error: 'Terlalu banyak permintaan. Coba lagi sebentar lagi.' },
+        { status: 429, headers: { 'Retry-After': String(gate.retryAfter) } },
+      );
+    }
+
     const body = (await req.json()) as ChatReq;
     if (!Array.isArray(body.messages) || body.messages.length === 0) {
       return badRequest('messages required');
