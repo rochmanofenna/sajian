@@ -1,4 +1,4 @@
-// Hero section — 3 variants. Icon-only logo + CSS-rendered restaurant name
+// Hero section — 5 variants. Icon-only logo + CSS-rendered restaurant name
 // so DALL·E text-garbling never shows up in the brand lockup.
 
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
@@ -15,6 +15,10 @@ export function Hero({ section, ctx, props }: SectionComponentProps<HeroProps>) 
       return <Minimal ctx={ctx} props={props} />;
     case 'split':
       return <Split ctx={ctx} props={props} />;
+    case 'fullscreen':
+      return <Fullscreen ctx={ctx} props={props} />;
+    case 'editorial':
+      return <Editorial ctx={ctx} props={props} />;
     case 'gradient':
     default:
       return <Gradient ctx={ctx} props={props} />;
@@ -68,15 +72,13 @@ function Gradient({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: He
         <Lockup ctx={ctx} />
         {ctx.tagline && <p className="text-base opacity-85 max-w-md mx-auto">{ctx.tagline}</p>}
         {props.subhead && <p className="text-sm opacity-70 max-w-md mx-auto">{props.subhead}</p>}
-        {(props.cta_label || 'Lihat Menu') && (
-          <a
-            href={props.cta_href ?? '/menu'}
-            className="inline-block mt-3 px-6 h-11 leading-[44px] rounded-full font-medium"
-            style={{ background: background, color: primary }}
-          >
-            {props.cta_label ?? 'Lihat Menu →'}
-          </a>
-        )}
+        <a
+          href={props.cta_href ?? '/menu'}
+          className="inline-block mt-3 px-6 h-11 leading-[44px] rounded-full font-medium"
+          style={{ background, color: primary }}
+        >
+          {props.cta_label ?? 'Lihat Menu →'}
+        </a>
       </div>
     </section>
   );
@@ -134,6 +136,124 @@ function Split({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: HeroP
               Foto hero muncul di sini
             </div>
           )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Fullscreen({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: HeroProps }) {
+  const { primary, background, dark } = ctx.colors;
+  return (
+    <section
+      className="relative overflow-hidden px-6 py-24 md:py-32 text-center"
+      style={{ color: background, background: dark, minHeight: '72vh' }}
+    >
+      {ctx.heroImageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={ctx.heroImageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `radial-gradient(circle at 30% 30%, ${primary} 0%, ${dark} 75%)`,
+          }}
+        />
+      )}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.6) 100%)`,
+        }}
+      />
+      <div className="relative z-10 max-w-2xl mx-auto space-y-5">
+        <Lockup ctx={ctx} />
+        {ctx.tagline && (
+          <p className="text-lg opacity-95 max-w-xl mx-auto leading-relaxed">
+            {ctx.tagline}
+          </p>
+        )}
+        {props.subhead && (
+          <p className="text-sm opacity-80 max-w-lg mx-auto">{props.subhead}</p>
+        )}
+        <a
+          href={props.cta_href ?? '/menu'}
+          className="inline-block mt-2 px-7 h-12 leading-[48px] rounded-full font-medium"
+          style={{ background, color: primary }}
+        >
+          {props.cta_label ?? 'Lihat Menu →'}
+        </a>
+      </div>
+    </section>
+  );
+}
+
+function Editorial({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: HeroProps }) {
+  const { primary, background, dark } = ctx.colors;
+  return (
+    <section className="px-6 py-14" style={{ background, color: dark }}>
+      <div className="max-w-4xl mx-auto">
+        <div className="grid gap-10 md:grid-cols-12 items-end">
+          <div className="md:col-span-7 space-y-5">
+            <div
+              className="text-xs uppercase tracking-[0.28em]"
+              style={{ color: primary, fontFamily: 'var(--font-mono, monospace)' }}
+            >
+              Est. {new Date().getFullYear()} · Sajian
+            </div>
+            <h1
+              className="text-5xl md:text-6xl font-semibold leading-[1.02] tracking-tight"
+              style={{ fontFamily: 'var(--font-display, serif)' }}
+            >
+              {ctx.name}
+            </h1>
+            {ctx.tagline && (
+              <p className="text-base opacity-75 max-w-md leading-relaxed">
+                {ctx.tagline}
+              </p>
+            )}
+            <div className="flex items-center gap-4">
+              <a
+                href={props.cta_href ?? '/menu'}
+                className="inline-block px-6 h-11 leading-[44px] rounded-full text-sm font-medium text-white"
+                style={{ background: primary }}
+              >
+                {props.cta_label ?? 'Lihat Menu'}
+              </a>
+              {ctx.logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={ctx.logoUrl}
+                  alt=""
+                  className="h-10 w-10 rounded-xl object-cover"
+                  style={{ border: `1px solid ${primary}30` }}
+                />
+              )}
+            </div>
+          </div>
+          <div className="md:col-span-5">
+            <div
+              className="aspect-[3/4] rounded-xl overflow-hidden"
+              style={{ background: `${primary}14`, border: `1px solid ${primary}22` }}
+            >
+              {ctx.heroImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={ctx.heroImageUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center opacity-40 text-xs uppercase tracking-wider">
+                  Foto hero
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </section>
