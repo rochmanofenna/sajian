@@ -115,23 +115,35 @@ export function toPublicTenant(t: Tenant): PublicTenant {
 }
 
 // Hostnames that should never resolve to a tenant.
-const ROOT_HOSTS = new Set(['sajian.app', 'www.sajian.app', 'localhost', 'localhost:3000']);
+// Hosts that are the "app" (marketing + owner dashboard). NONE of them
+// ever resolve to a tenant slug — they are the sajian.app product
+// surface itself. Anything else ending in `.sajian.app` is considered
+// a tenant subdomain.
+const APP_HOSTS = new Set([
+  'sajian.app',
+  'www.sajian.app',
+  'app.sajian.app',
+  'localhost',
+  'localhost:3000',
+  '127.0.0.1',
+]);
 
 export function slugFromHost(host: string | null | undefined): string | null {
   if (!host) return null;
-  const cleanHost = host.split(':')[0].toLowerCase();
+  const lowered = host.toLowerCase();
+  const cleanHost = lowered.split(':')[0];
 
-  if (cleanHost === 'sajian.app' || cleanHost === 'www.sajian.app') return null;
-  if (cleanHost === 'localhost' || cleanHost === '127.0.0.1') return null;
-  if (ROOT_HOSTS.has(host.toLowerCase())) return null;
+  if (APP_HOSTS.has(lowered) || APP_HOSTS.has(cleanHost)) return null;
 
-  // Any *.vercel.app URL (preview or prod alias) → marketing.
+  // Any *.vercel.app URL (preview or prod alias) → marketing / app.
   // Tenants are only ever resolved from subdomains of sajian.app.
   if (cleanHost.endsWith('.vercel.app')) return null;
 
-  // Subdomain = first label. Works for mindiology.sajian.app AND mindiology.localhost.
+  // Subdomain = first label. Works for mindiology.sajian.app AND
+  // mindiology.localhost. Preview origin (preview.sajian.app) resolves
+  // to slug='preview'; callers that care handle it explicitly.
   const first = cleanHost.split('.')[0];
-  if (!first || first === 'www') return null;
+  if (!first || first === 'www' || first === 'app') return null;
   return first;
 }
 

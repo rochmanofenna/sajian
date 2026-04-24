@@ -5,7 +5,7 @@
 // can bring the store back online.
 
 import { createClient as createServerClient } from '@/lib/supabase/server';
-import { getPublicTenantAnyStatus } from '@/lib/tenant';
+import { getPublicTenantAnyStatus, toPublicTenant } from '@/lib/tenant';
 import { getOwnerOrNull } from '@/lib/admin/auth';
 import { OwnerLogin } from '@/components/admin/OwnerLogin';
 import { AdminTabs, type AdminTab } from '@/components/admin/AdminTabs';
@@ -26,28 +26,32 @@ export default async function AdminDashboardPage({
 }: {
   searchParams: Promise<{ tab?: string | string[] }>;
 }) {
-  const tenant = await getPublicTenantAnyStatus();
-  // The layout already handles the "no tenant at all" case. If we got here
-  // without a tenant, it's either a race or misconfig — fall back gracefully.
-  if (!tenant) {
-    return (
-      <div className="max-w-md mx-auto px-4 py-16 text-center text-zinc-600">
-        Dashboard tidak tersedia untuk subdomain ini.
-      </div>
-    );
-  }
-
+  // Dual-mode host resolution. On a tenant subdomain the public tenant
+  // comes from the host. On the app apex (sajian.app/admin) there's no
+  // host tenant — getOwnerOrNull() falls back to the tenant owned by
+  // the authed user, which is how `sajian.app/admin` becomes a working
+  // dashboard without needing to send the owner to a subdomain.
+  const hostTenant = await getPublicTenantAnyStatus();
   const owner = await getOwnerOrNull();
 
+  // Unauthed anywhere → show the inline login. For host-tenant mode the
+  // login ties to that tenant's branding; on the apex we render a
+  // generic neutral login since we haven't figured out which store yet.
   if (!owner) {
-    // Differentiate "not logged in" vs "logged in but not owner" so the
-    // copy is honest about what went wrong.
     const sb = await createServerClient();
     const {
       data: { user },
     } = await sb.auth.getUser();
-    return <OwnerLogin tenant={tenant} reason={user ? 'not_owner' : 'unauth'} />;
+    if (hostTenant) {
+      return <OwnerLogin tenant={hostTenant} reason={user ? 'not_owner' : 'unauth'} />;
+    }
+    return <OwnerLogin reason={user ? 'not_owner' : 'unauth'} />;
   }
+
+  // Owner is authed — derive the public tenant from their owned row so
+  // every downstream component has the exact same object shape whether
+  // we entered via subdomain or apex.
+  const tenant = hostTenant ?? toPublicTenant(owner.tenant);
 
   if (!tenant.is_active) {
     return <InactiveTenantPanel tenant={tenant} />;

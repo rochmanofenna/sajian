@@ -22,7 +22,10 @@ export function OwnerLogin({
   tenant,
   reason,
 }: {
-  tenant: PublicTenant;
+  // Optional: apex (sajian.app/admin) renders this without a host
+  // tenant and styles the login neutrally. Subdomain paths still pass
+  // the tinted tenant to keep the brand continuity.
+  tenant?: PublicTenant;
   reason: 'unauth' | 'not_owner';
 }) {
   const supabase = createClient();
@@ -101,7 +104,8 @@ export function OwnerLogin({
     window.location.reload();
   }
 
-  const primary = tenant.colors.primary;
+  const primary = tenant?.colors.primary ?? '#111827';
+  const brandLabel = tenant ? `Admin · ${tenant.name}` : 'Admin Sajian';
   const sentTo = method === 'email' ? identifier.trim().toLowerCase() : phoneDisplay || normalizedPhone;
 
   return (
@@ -112,7 +116,7 @@ export function OwnerLogin({
           style={{ color: primary }}
         >
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: primary }} />
-          Admin · {tenant.name}
+          {brandLabel}
         </div>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight">Masuk ke dashboard</h1>
         <p className="mt-2 text-sm text-zinc-600">
