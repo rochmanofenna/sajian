@@ -34,6 +34,28 @@ export interface TenantColors {
 
 export type ThemeTemplate = 'kedai' | 'warung' | 'modern' | 'food-hall' | 'classic';
 
+// Storefront sections — the "page composition" layer the AI manipulates via
+// chat. See src/lib/storefront/section-registry.ts for the allowed `type`s
+// and their variants. `props` is a free-form bag the section component types
+// back down to its own schema. Legacy `theme_template` continues to live on
+// the tenant row as a fallback for storefronts that haven't been migrated.
+export type SectionType =
+  | 'hero'
+  | 'about'
+  | 'featured_items'
+  | 'gallery'
+  | 'promo'
+  | 'contact';
+
+export interface StorefrontSection {
+  id: string;
+  type: SectionType;
+  variant: string;
+  sort_order: number;
+  props?: Record<string, unknown>;
+  is_visible?: boolean;
+}
+
 export interface TenantDraft {
   name?: string;
   slug?: string;
@@ -45,6 +67,7 @@ export interface TenantDraft {
   hero_image_url?: string | null;
   theme_template?: ThemeTemplate;
   menu_categories?: CategoryDraft[];
+  sections?: StorefrontSection[];
   operating_hours?: Record<string, { open: string; close: string }>;
   pos_provider?: 'sajian_native' | 'esb';
   esb_config?: {
@@ -90,5 +113,13 @@ export type OnboardingAction =
   | { type: 'remove_menu_item'; item: string }
   | { type: 'update_menu_item'; item: string; field: 'name' | 'price' | 'description'; value: string | number }
   | { type: 'generate_logo' }
+  | { type: 'generate_food_photo'; item: string }
+  | { type: 'generate_all_photos' }
   | { type: 'set_template'; template: ThemeTemplate }
+  | { type: 'add_section'; section_type: SectionType; variant?: string; props?: Record<string, unknown>; position?: 'start' | 'end' | `after:${string}` | `before:${string}` }
+  | { type: 'remove_section'; section_id: string }
+  | { type: 'update_section_variant'; section_id: string; variant: string }
+  | { type: 'update_section_props'; section_id: string; props: Record<string, unknown> }
+  | { type: 'toggle_section'; section_id: string; visible: boolean }
+  | { type: 'reorder_sections'; order: string[] }
   | { type: 'ready_to_launch' };

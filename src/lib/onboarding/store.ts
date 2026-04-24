@@ -16,7 +16,18 @@ import type {
   TenantDraft,
   CategoryDraft,
   MenuItemDraft,
+  SectionType,
+  StorefrontSection,
 } from './types';
+import {
+  addSection as addSectionHelper,
+  removeSection as removeSectionHelper,
+  reorderSections as reorderSectionsHelper,
+  toggleSection as toggleSectionHelper,
+  updateSectionProps as updateSectionPropsHelper,
+  updateSectionVariant as updateSectionVariantHelper,
+} from '@/lib/storefront/section-actions';
+import { defaultSections } from '@/lib/storefront/default-sections';
 
 interface OnboardingState {
   userId: string | null;
@@ -35,6 +46,18 @@ interface OnboardingState {
   removeItem: (itemName: string) => Promise<void>;
   updateItem: (itemName: string, field: 'name' | 'price' | 'description', value: string | number) => Promise<void>;
   setItemImage: (itemName: string, imageUrl: string | null) => Promise<void>;
+  addSection: (input: {
+    type: SectionType;
+    variant?: string;
+    props?: Record<string, unknown>;
+    position?: 'start' | 'end' | `after:${string}` | `before:${string}`;
+  }) => Promise<string>;
+  removeSection: (sectionId: string) => Promise<void>;
+  updateSectionVariant: (sectionId: string, variant: string) => Promise<void>;
+  updateSectionProps: (sectionId: string, patch: Record<string, unknown>) => Promise<void>;
+  toggleSection: (sectionId: string, visible: boolean) => Promise<void>;
+  reorderSections: (order: string[]) => Promise<void>;
+  ensureDefaultSections: () => Promise<void>;
   pushMessage: (msg: Omit<ChatMessage, 'id' | 'createdAt'>) => Promise<ChatMessage>;
   setMessages: (messages: ChatMessage[]) => Promise<void>;
   setLoading: (b: boolean) => void;
@@ -110,16 +133,24 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
             },
           ];
 
+    const loadedDraft = ((data?.draft as TenantDraft) ?? {}) as TenantDraft;
+    // Seed default sections for any draft that hasn't been through the
+    // section engine yet. Owners with existing drafts keep whatever they've
+    // customized; fresh / legacy drafts get the default stack.
+    if (!loadedDraft.sections || loadedDraft.sections.length === 0) {
+      loadedDraft.sections = defaultSections();
+    }
+
     set({
       userId,
       phone,
       step: (data?.step as OnboardingStep) ?? 'welcome',
-      draft: (data?.draft as TenantDraft) ?? {},
+      draft: loadedDraft,
       messages,
     });
-    // If we filtered out stale error bubbles, persist the cleaned list so
-    // they don't come back on the next load.
-    if (rawSaved.length !== saved.length) {
+    // If we filtered out stale error bubbles or seeded sections, persist
+    // the cleaned list so they don't come back on the next load.
+    if (rawSaved.length !== saved.length || !data?.draft) {
       persist(get());
     }
   },
@@ -196,6 +227,78 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
         })),
       },
     }));
+    persist(get());
+  },
+
+  addSection: async ({ type, variant, props, position }) => {
+    let createdId = '';
+    set((s) => {
+      const existing = s.draft.sections ?? [];
+      const next = addSectionHelper(existing, { type, variant, props, position });
+      // The new section is the last one added by addSectionHelper — find it
+      // by diffing ids so we can return the id to the caller.
+      const existingIds = new Set(existing.map((x) => x.id));
+      createdId = next.find((x) => !existingIds.has(x.id))?.id ?? '';
+      return { draft: { ...s.draft, sections: next } };
+    });
+    persist(get());
+    return createdId;
+  },
+
+  removeSection: async (sectionId) => {
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        sections: removeSectionHelper(s.draft.sections ?? [], sectionId),
+      },
+    }));
+    persist(get());
+  },
+
+  updateSectionVariant: async (sectionId, variant) => {
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        sections: updateSectionVariantHelper(s.draft.sections ?? [], sectionId, variant),
+      },
+    }));
+    persist(get());
+  },
+
+  updateSectionProps: async (sectionId, patch) => {
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        sections: updateSectionPropsHelper(s.draft.sections ?? [], sectionId, patch),
+      },
+    }));
+    persist(get());
+  },
+
+  toggleSection: async (sectionId, visible) => {
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        sections: toggleSectionHelper(s.draft.sections ?? [], sectionId, visible),
+      },
+    }));
+    persist(get());
+  },
+
+  reorderSections: async (order) => {
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        sections: reorderSectionsHelper(s.draft.sections ?? [], order),
+      },
+    }));
+    persist(get());
+  },
+
+  ensureDefaultSections: async () => {
+    const current = get().draft.sections;
+    if (current && current.length > 0) return;
+    set((s) => ({ draft: { ...s.draft, sections: defaultSections() } }));
     persist(get());
   },
 

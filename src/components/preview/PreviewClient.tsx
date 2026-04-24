@@ -6,12 +6,16 @@
 // parent can replay the current draft immediately — handles the race when
 // the iframe mounts after a state change.
 //
-// Initial draft is server-injected via props so the first paint matches the
-// live store even before JS runs.
+// When the draft carries a `sections` stack (the section-based engine), we
+// render via StorefrontRenderer — same component the live storefront will
+// use once migrated. Legacy drafts without sections fall back to the old
+// phone-framed menu list so mid-flight owners don't see a regression.
 
 import { useEffect, useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
 import type { MenuItemDraft, TenantDraft } from '@/lib/onboarding/types';
+import { StorefrontRenderer } from '@/components/storefront/StorefrontRenderer';
+import type { SectionContext } from '@/lib/storefront/section-types';
 
 const PREVIEW_MSG_DRAFT = 'sajian:draft';
 const PREVIEW_MSG_READY = 'sajian:preview:ready';
@@ -22,6 +26,27 @@ const DEFAULT_COLORS = {
   background: '#FDF6EC',
   dark: '#1A1A18',
 };
+
+function draftToContext(draft: TenantDraft): SectionContext {
+  return {
+    name: draft.name ?? 'Nama Restoran',
+    tagline: draft.tagline ?? null,
+    logoUrl: draft.logo_url ?? null,
+    heroImageUrl: draft.hero_image_url ?? null,
+    colors: draft.colors ?? DEFAULT_COLORS,
+    menuCategories: (draft.menu_categories ?? []).map((c) => ({
+      name: c.name,
+      items: c.items.map((i) => ({
+        name: i.name,
+        description: i.description,
+        price: i.price,
+        image_url: i.image_url ?? null,
+      })),
+    })),
+    whatsapp: null,
+    address: draft.location ?? null,
+  };
+}
 
 export function PreviewClient({ initial }: { initial: TenantDraft }) {
   const [draft, setDraft] = useState<TenantDraft>(initial);
@@ -47,12 +72,23 @@ export function PreviewClient({ initial }: { initial: TenantDraft }) {
   }, []);
 
   const colors = draft.colors ?? DEFAULT_COLORS;
+  const sections = draft.sections ?? [];
+  const hasSections = sections.length > 0;
+
+  if (hasSections) {
+    return (
+      <div className="min-h-screen" style={{ background: colors.background, color: colors.dark }}>
+        <StorefrontRenderer sections={sections} ctx={draftToContext(draft)} />
+      </div>
+    );
+  }
+
+  // Legacy fallback — the pre-section preview.
   const categories = draft.menu_categories ?? [];
   const hasMenu = categories.some((c) => c.items.length > 0);
 
   return (
     <div className="min-h-screen" style={{ background: colors.background, color: colors.dark }}>
-      {/* Hero image — full-bleed top band when present. */}
       {draft.hero_image_url && (
         <div className="relative w-full" style={{ aspectRatio: '16 / 9' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -141,10 +177,6 @@ function ItemRow({
         opacity: unavailable ? 0.55 : 1,
       }}
     >
-      {/* Always render a thumbnail slot so every row has the same column
-          geometry — items with images get a thumbnail, items without get a
-          tinted placeholder the same size. Keeps the name + price aligned
-          down the whole list. */}
       {item.image_url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
