@@ -76,14 +76,17 @@ function sectionCatalog(): string {
 // manual" for anything below.
 function sectionPropsCatalog(): string {
   return [
-    '  - hero (all variants): cta_label (string), cta_href (string, default "/menu"), cta_size ("sm"|"md"|"lg"), cta_align ("left"|"center"|"right"), cta_visible (boolean), subhead (string)',
-    '  - about: heading (string), body (string), image_url (string, with_image variant), timeline (array of {year,title,body}, story variant)',
-    '  - featured_items: heading (string), items (array of item names to feature), limit (number)',
-    '  - gallery: heading (string), photos (array of image urls), limit (number)',
-    '  - promo (banner|card): headline (string), body (string), cta_label (string), cta_href (string), fine_print (string)',
-    '  - promo (countdown): same + expires_at (ISO 8601)',
-    '  - contact (simple|with_map): heading (string), address (string), whatsapp (string), hours_line (string), query (string, with_map variant)',
-    '  - testimonials: heading (string), reviews (array of {name, text, rating 1-5})',
+    '  - hero (all variants): cta_label (string, default "Lihat Menu"), cta_href (string, default "/menu"), cta_size ("sm"|"md"|"lg", default "md"), cta_align ("left"|"center"|"right"), cta_visible (boolean), subhead (string)',
+    '  - about (all variants): heading (string), body (string), text_align ("left"|"center"|"right", default "left"), heading_size ("sm"|"md"|"lg", default "md"), cta_label (string), cta_href (string), cta_size ("sm"|"md"|"lg"), cta_align ("left"|"center"|"right"), cta_visible (boolean, default false — opt-in)',
+    '  - about (with_image): + image_url (string), image_position ("left"|"right", default "right")',
+    '  - about (story): + timeline (array of {year,title,body})',
+    '  - featured_items (all variants): heading (string), items (array of item names to feature), limit (number)',
+    '  - gallery (all variants): heading (string), photos (array of image urls), limit (number)',
+    '  - promo (all variants): headline (string), body (string), cta_label (string, default "Pesan Sekarang"), cta_href (string, default "/menu"), cta_size ("sm"|"md"|"lg"), cta_align ("left"|"center"|"right"), cta_visible (boolean), banner_align ("left"|"center"|"right", default "center"), emphasis ("subtle"|"bold", default "bold"), fine_print (string)',
+    '  - promo (countdown): + expires_at (ISO 8601)',
+    '  - contact (all variants): heading (string), address (string), whatsapp (string), hours_line (string), text_align ("left"|"center"|"right", default "left"), layout ("stacked"|"inline", default "stacked"), show_whatsapp_cta (boolean, default true), whatsapp_cta_label (string, default "Chat WhatsApp"), cta_size ("sm"|"md"|"lg"), cta_align ("left"|"center"|"right")',
+    '  - contact (with_map): + query (string), map_position ("above"|"below", default "below")',
+    '  - testimonials (all variants): heading (string), reviews (array of {name, text, rating 1-5})',
     '  - social (icons|feed): heading (string), instagram (handle), tiktok (handle), facebook (handle), whatsapp (number), photos (array, feed variant)',
     '  - location (map): heading (string), address (string), query (string), hours_line (string)',
     '  - announcement (bar|modal): message (string), cta_label (string), cta_href (string), version (string, modal variant)',
@@ -192,13 +195,37 @@ Rules for actions:
 - If the user asks "bikinin foto semua menu" / "foto untuk semua item", emit generate_all_photos (batch).
 - Section actions use the type catalog above. Variant must be one of the listed variants for that type. For add_section, use "position" like "after:hero" or "before:contact" to place it relative to existing sections; default is "end".
 - LAYOUT / STYLE / COPY REQUESTS on an existing section ALWAYS route through update_section_props. Never say "tidak bisa diubah manual" or "pengaturan tombol belum bisa diubah" — every field in the "Editable props" catalog above is a live knob. Examples you MUST handle:
+  Hero CTA
   - "perkecil tombol lihat menu" → update_section_props on the hero with {"cta_size":"sm"}
-  - "taruh tombol di kanan" → {"cta_align":"right"}
-  - "taruh tombol di kiri" → {"cta_align":"left"}
-  - "sembunyikan tombolnya" / "hapus tombol" → {"cta_visible":false}
-  - "ganti tulisan tombol jadi Order Sekarang" → {"cta_label":"Order Sekarang"}
-  - "tombol arah ke halaman checkout" → {"cta_href":"/checkout"}
-  - "tambahin subheadline" / "kasih subhead" → {"subhead":"..."}
+  - "taruh tombol di kanan" → hero {"cta_align":"right"}
+  - "taruh tombol di kiri" → hero {"cta_align":"left"}
+  - "sembunyikan tombolnya" / "hapus tombol" → hero {"cta_visible":false}
+  - "ganti tulisan tombol jadi Order Sekarang" → hero {"cta_label":"Order Sekarang"}
+  - "tombol arah ke halaman checkout" → hero {"cta_href":"/checkout"}
+  - "tambahin subheadline" / "kasih subhead" → hero {"subhead":"..."}
+  Promo
+  - "perkecil tombol promo" → promo {"cta_size":"sm"}
+  - "taruh promo di kanan" → promo {"banner_align":"right"}
+  - "promo rata kiri" → promo {"banner_align":"left"}
+  - "ganti tulisan tombol promo jadi Order Sekarang" → promo {"cta_label":"Order Sekarang"}
+  - "sembunyikan tombol promo" → promo {"cta_visible":false}
+  - "promo lebih subtle / lembut" → promo {"emphasis":"subtle"}
+  About
+  - "rata tengah about" / "tengahin about" → about {"text_align":"center"}
+  - "rata kanan about" → about {"text_align":"right"}
+  - "foto about di kiri" → about {"image_position":"left"}
+  - "sembunyikan tombol about" → about {"cta_visible":false}
+  - "kasih tombol at about ke Order Sekarang" → about {"cta_label":"Order Sekarang","cta_visible":true}
+  - "heading about gedein" → about {"heading_size":"lg"}
+  Contact
+  - "tampilkan tombol whatsapp di contact" → contact {"show_whatsapp_cta":true}
+  - "sembunyikan tombol whatsapp di contact" → contact {"show_whatsapp_cta":false}
+  - "ganti tulisan tombol whatsapp" → contact {"whatsapp_cta_label":"Hubungi kami"}
+  - "contact rata tengah" → contact {"text_align":"center"}
+  - "peta di atas contact" → contact {"map_position":"above"}
+  - "peta di bawah contact" → contact {"map_position":"below"}
+  - "contact dalam satu baris" → contact {"layout":"inline"}
+  Other
   - "ganti headline promo" / "ganti body testimoni" → corresponding key on that section
   - "tambahin review dari Budi" → append to testimonials.reviews
   - Any request touching text, size, alignment, visibility, URL, or list contents maps to update_section_props.

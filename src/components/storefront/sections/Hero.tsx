@@ -2,33 +2,19 @@
 // so DALL·E text-garbling never shows up in the brand lockup.
 
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
+import { ctaSizeClass, rowAlignClass, type Align, type CtaSize } from './cta';
 
 interface HeroProps {
   cta_label?: string;
   cta_href?: string;
-  cta_size?: 'sm' | 'md' | 'lg';
-  cta_align?: 'left' | 'center' | 'right';
+  cta_size?: CtaSize;
+  cta_align?: Align;
   cta_visible?: boolean;
   subhead?: string;
 }
 
-function ctaSizeClass(size?: 'sm' | 'md' | 'lg'): string {
-  switch (size) {
-    case 'sm':
-      return 'px-4 h-9 leading-[36px] text-xs';
-    case 'lg':
-      return 'px-7 h-12 leading-[48px] text-base';
-    case 'md':
-    default:
-      return 'px-6 h-11 leading-[44px] text-sm';
-  }
-}
-
-function ctaRowAlignClass(align?: 'left' | 'center' | 'right'): string {
-  if (align === 'left') return 'justify-start';
-  if (align === 'right') return 'justify-end';
-  return 'justify-center';
-}
+// Local alias kept so the rest of this file reads the same as before.
+const ctaRowAlignClass = rowAlignClass;
 
 function ctaHidden(props: HeroProps): boolean {
   return props.cta_visible === false;

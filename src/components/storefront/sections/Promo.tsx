@@ -1,20 +1,57 @@
 'use client';
 
 // Promo — banner (full-width), card (floating discount card), or countdown
-// (same as card with an expiry timer). All respect tenant colors.
+// (same as card with an expiry timer). All respect tenant colors and expose
+// cta_* / banner_align / emphasis props so the AI can route layout requests
+// through update_section_props instead of refusing.
 
 import { useEffect, useState } from 'react';
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
+import {
+  ctaSizeClass,
+  rowAlignClass,
+  textAlignClass,
+  type Align,
+  type CtaSize,
+} from './cta';
 
 interface PromoProps {
   headline?: string;
   body?: string;
   cta_label?: string;
   cta_href?: string;
+  cta_size?: CtaSize;
+  cta_align?: Align;
+  cta_visible?: boolean;
+  // Alignment of the headline + body text (independent of the CTA row).
+  banner_align?: Align;
+  // `subtle` tones the gradient way down — useful when the promo should
+  // read as an accent, not a screaming banner.
+  emphasis?: 'subtle' | 'bold';
   // ISO 8601 for the countdown variant, e.g. "2026-05-01T00:00:00+07:00".
   expires_at?: string;
   // Optional fine-print under the CTA (promo code, terms).
   fine_print?: string;
+}
+
+function ctaHidden(props: PromoProps): boolean {
+  return props.cta_visible === false;
+}
+
+function bannerBackground(
+  ctx: SectionComponentProps['ctx'],
+  emphasis?: 'subtle' | 'bold',
+) {
+  if (emphasis === 'subtle') {
+    return {
+      background: `${ctx.colors.primary}12`,
+      color: ctx.colors.dark,
+    };
+  }
+  return {
+    background: `linear-gradient(135deg, ${ctx.colors.primary} 0%, ${ctx.colors.dark} 140%)`,
+    color: ctx.colors.background,
+  };
 }
 
 export function Promo({ section, ctx, props }: SectionComponentProps<PromoProps>) {
@@ -24,17 +61,17 @@ export function Promo({ section, ctx, props }: SectionComponentProps<PromoProps>
 }
 
 function Banner({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: PromoProps }) {
+  const subtle = props.emphasis === 'subtle';
   return (
     <section
       className="px-6 py-10"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div
-        className="max-w-4xl mx-auto rounded-3xl px-6 py-8 text-center"
-        style={{
-          background: `linear-gradient(135deg, ${ctx.colors.primary} 0%, ${ctx.colors.dark} 140%)`,
-          color: ctx.colors.background,
-        }}
+        className={`max-w-4xl mx-auto rounded-3xl px-6 py-8 ${textAlignClass(
+          props.banner_align,
+        )}`}
+        style={bannerBackground(ctx, props.emphasis)}
       >
         <h2
           className="text-2xl font-semibold tracking-tight"
@@ -43,13 +80,21 @@ function Banner({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Prom
           {props.headline ?? 'Promo spesial'}
         </h2>
         {props.body && <p className="mt-2 text-sm opacity-85">{props.body}</p>}
-        <a
-          href={props.cta_href ?? '/menu'}
-          className="mt-4 inline-block px-5 h-11 leading-[44px] rounded-full text-sm font-medium"
-          style={{ background: ctx.colors.background, color: ctx.colors.primary }}
-        >
-          {props.cta_label ?? 'Pesan sekarang'}
-        </a>
+        {!ctaHidden(props) && (
+          <div className={`flex mt-4 ${rowAlignClass(props.cta_align ?? props.banner_align)}`}>
+            <a
+              href={props.cta_href ?? '/menu'}
+              className={`inline-block rounded-full font-medium ${ctaSizeClass(props.cta_size)}`}
+              style={
+                subtle
+                  ? { background: ctx.colors.primary, color: ctx.colors.background }
+                  : { background: ctx.colors.background, color: ctx.colors.primary }
+              }
+            >
+              {props.cta_label ?? 'Pesan Sekarang'}
+            </a>
+          </div>
+        )}
         {props.fine_print && <p className="mt-3 text-[11px] opacity-70">{props.fine_print}</p>}
       </div>
     </section>
@@ -57,6 +102,7 @@ function Banner({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Prom
 }
 
 function Card({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: PromoProps }) {
+  const subtle = props.emphasis === 'subtle';
   return (
     <section
       className="px-6 py-10"
@@ -65,19 +111,22 @@ function Card({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: PromoP
       <div
         className="max-w-md mx-auto rounded-3xl p-5 shadow-lg flex items-start gap-4"
         style={{
-          background: `${ctx.colors.primary}`,
-          color: ctx.colors.background,
+          background: subtle ? `${ctx.colors.primary}14` : ctx.colors.primary,
+          color: subtle ? ctx.colors.dark : ctx.colors.background,
           boxShadow: `0 12px 40px -16px ${ctx.colors.primary}55`,
         }}
       >
         <div
           className="h-12 w-12 rounded-2xl flex-shrink-0 flex items-center justify-center text-xl"
-          style={{ background: ctx.colors.background, color: ctx.colors.primary }}
+          style={{
+            background: subtle ? ctx.colors.primary : ctx.colors.background,
+            color: subtle ? ctx.colors.background : ctx.colors.primary,
+          }}
           aria-hidden="true"
         >
           %
         </div>
-        <div className="flex-1 min-w-0 space-y-2">
+        <div className={`flex-1 min-w-0 space-y-2 ${textAlignClass(props.banner_align ?? 'left')}`}>
           <h3
             className="text-lg font-semibold leading-snug"
             style={{ fontFamily: 'var(--font-display, serif)' }}
@@ -85,13 +134,21 @@ function Card({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: PromoP
             {props.headline ?? 'Promo spesial'}
           </h3>
           {props.body && <p className="text-sm opacity-85">{props.body}</p>}
-          <a
-            href={props.cta_href ?? '/menu'}
-            className="inline-block mt-1 px-4 h-9 leading-[36px] rounded-full text-xs font-medium"
-            style={{ background: ctx.colors.background, color: ctx.colors.primary }}
-          >
-            {props.cta_label ?? 'Ambil promo'}
-          </a>
+          {!ctaHidden(props) && (
+            <div className={`flex ${rowAlignClass(props.cta_align ?? props.banner_align ?? 'left')}`}>
+              <a
+                href={props.cta_href ?? '/menu'}
+                className={`inline-block rounded-full font-medium ${ctaSizeClass(props.cta_size ?? 'sm')}`}
+                style={
+                  subtle
+                    ? { background: ctx.colors.primary, color: ctx.colors.background }
+                    : { background: ctx.colors.background, color: ctx.colors.primary }
+                }
+              >
+                {props.cta_label ?? 'Ambil promo'}
+              </a>
+            </div>
+          )}
           {props.fine_print && <p className="text-[10px] opacity-70 mt-1">{props.fine_print}</p>}
         </div>
       </div>
@@ -116,6 +173,7 @@ function Countdown({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: P
   }
 
   const expired = remaining !== null && remaining <= 0;
+  const subtle = props.emphasis === 'subtle';
 
   return (
     <section
@@ -123,10 +181,12 @@ function Countdown({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: P
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div
-        className="max-w-md mx-auto rounded-3xl px-5 py-6 text-center"
+        className={`max-w-md mx-auto rounded-3xl px-5 py-6 ${textAlignClass(
+          props.banner_align,
+        )}`}
         style={{
-          background: ctx.colors.primary,
-          color: ctx.colors.background,
+          background: subtle ? `${ctx.colors.primary}14` : ctx.colors.primary,
+          color: subtle ? ctx.colors.dark : ctx.colors.background,
         }}
       >
         <h3
@@ -138,7 +198,13 @@ function Countdown({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: P
         {props.body && <p className="mt-1 text-sm opacity-85">{props.body}</p>}
         {remaining !== null && !expired && (
           <div
-            className="mt-4 inline-flex items-center gap-2 font-mono text-2xl font-semibold"
+            className={`mt-4 inline-flex items-center gap-2 font-mono text-2xl font-semibold ${
+              props.banner_align === 'left'
+                ? ''
+                : props.banner_align === 'right'
+                  ? 'ml-auto'
+                  : 'mx-auto'
+            }`}
             aria-live="polite"
           >
             <span>{part(remaining, 1000 * 60 * 60 * 24, 99)}</span>
@@ -151,14 +217,20 @@ function Countdown({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: P
           </div>
         )}
         {expired && <p className="mt-3 text-sm opacity-75">Promo sudah berakhir.</p>}
-        {!expired && (
-          <a
-            href={props.cta_href ?? '/menu'}
-            className="mt-5 inline-block px-5 h-11 leading-[44px] rounded-full text-sm font-medium"
-            style={{ background: ctx.colors.background, color: ctx.colors.primary }}
-          >
-            {props.cta_label ?? 'Ambil sekarang'}
-          </a>
+        {!expired && !ctaHidden(props) && (
+          <div className={`flex mt-5 ${rowAlignClass(props.cta_align ?? props.banner_align)}`}>
+            <a
+              href={props.cta_href ?? '/menu'}
+              className={`inline-block rounded-full font-medium ${ctaSizeClass(props.cta_size)}`}
+              style={
+                subtle
+                  ? { background: ctx.colors.primary, color: ctx.colors.background }
+                  : { background: ctx.colors.background, color: ctx.colors.primary }
+              }
+            >
+              {props.cta_label ?? 'Ambil sekarang'}
+            </a>
+          </div>
         )}
         {props.fine_print && <p className="mt-3 text-[11px] opacity-70">{props.fine_print}</p>}
       </div>
