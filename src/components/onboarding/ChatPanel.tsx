@@ -120,20 +120,38 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? 'Gagal bikin logo');
-      await patchDraft({ logo_url: body.logo_url });
-      await pushMessage({
-        role: 'assistant',
-        content: 'Logo udah jadi. Kalau mau beda tinggal bilang aja, atau upload logo kamu sendiri.',
-        kind: 'logo_uploaded',
-        attachments: [
-          {
-            type: 'image',
-            url: body.logo_url,
-            name: `${draft.name}-logo.png`,
-            mime: 'image/png',
-          },
-        ],
-      });
+
+      // New shape returns multiple options. Preselect the first so the
+      // preview has something immediately; owner can tap a different tile
+      // in the chat to swap.
+      const logos: string[] = Array.isArray(body.logos) ? body.logos.filter(Boolean) : [];
+      const primaryLogo = logos[0] ?? body.logo_url;
+      if (!primaryLogo) throw new Error('Logo tidak tersedia');
+
+      await patchDraft({ logo_url: primaryLogo });
+
+      if (logos.length > 1) {
+        await pushMessage({
+          role: 'assistant',
+          content: 'Ini 3 opsi logo. Tap salah satu buat dipake, atau minta aku bikinin lagi kalau gak ada yang cocok.',
+          kind: 'logo_options',
+          payload: { logos },
+        });
+      } else {
+        await pushMessage({
+          role: 'assistant',
+          content: 'Logo udah jadi. Kalau mau beda tinggal bilang aja, atau upload logo kamu sendiri.',
+          kind: 'logo_uploaded',
+          attachments: [
+            {
+              type: 'image',
+              url: primaryLogo,
+              name: `${draft.name}-logo.png`,
+              mime: 'image/png',
+            },
+          ],
+        });
+      }
     } catch (e) {
       console.error('[logo] generate failed', e);
       await pushMessage({

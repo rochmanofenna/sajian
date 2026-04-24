@@ -3,8 +3,9 @@
 // Chat bubble. Editorial warm palette. Rich attachments (menu editor, color
 // picker, launch CTA, uploaded files) render inline beneath the body text.
 
-import { FileText } from 'lucide-react';
+import { FileText, Check } from 'lucide-react';
 import type { ChatMessage as Msg, ChatAttachment } from '@/lib/onboarding/types';
+import { useOnboarding } from '@/lib/onboarding/store';
 import { MenuEditor } from './MenuEditor';
 import { ColorPicker } from './ColorPicker';
 
@@ -43,10 +44,44 @@ function AttachmentTile({ a, mine }: { a: ChatAttachment; mine: boolean }) {
   );
 }
 
+function LogoOptions({ logos }: { logos: string[] }) {
+  const selected = useOnboarding((s) => s.draft.logo_url ?? null);
+  const patchDraft = useOnboarding((s) => s.patchDraft);
+  return (
+    <div className="ob-logo-picker">
+      {logos.map((url) => {
+        const active = selected === url;
+        return (
+          <button
+            key={url}
+            type="button"
+            onClick={() => patchDraft({ logo_url: url })}
+            className="ob-logo-picker__tile"
+            data-active={active || undefined}
+            aria-pressed={active}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt="Opsi logo" />
+            {active && (
+              <span className="ob-logo-picker__check" aria-hidden="true">
+                <Check className="h-4 w-4" />
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ChatMessage({ msg, onLaunch }: Props) {
   const mine = msg.role === 'user';
   const hasText = typeof msg.content === 'string' && msg.content.trim().length > 0;
   const attachments = msg.attachments ?? [];
+  const logoOptions =
+    msg.kind === 'logo_options' && msg.payload && typeof msg.payload === 'object'
+      ? ((msg.payload as { logos?: unknown }).logos as string[] | undefined) ?? null
+      : null;
 
   return (
     <div className={`ob-bubble-row ${mine ? 'ob-bubble-row--user' : 'ob-bubble-row--ai'}`}>
@@ -61,6 +96,12 @@ export function ChatMessage({ msg, onLaunch }: Props) {
             {attachments.map((a, i) => (
               <AttachmentTile key={i} a={a} mine={mine} />
             ))}
+          </div>
+        )}
+
+        {logoOptions && logoOptions.length > 0 && (
+          <div className="ob-bubble__attach">
+            <LogoOptions logos={logoOptions} />
           </div>
         )}
 
