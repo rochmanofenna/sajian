@@ -96,7 +96,7 @@ export function PreviewClient({ initial }: { initial: TenantDraft }) {
         </div>
       </header>
 
-      <main className="max-w-md mx-auto px-4 py-5">
+      <main className="max-w-md mx-auto px-5 py-5">
         {!hasMenu ? (
           <div className="text-center py-16 opacity-60 text-sm">
             Menu akan muncul di sini.
@@ -111,7 +111,7 @@ export function PreviewClient({ initial }: { initial: TenantDraft }) {
                 >
                   {cat.name}
                 </h2>
-                <ul className="space-y-2">
+                <ul className="space-y-2 list-none p-0 m-0">
                   {cat.items.map((item) => (
                     <ItemRow key={item.name} item={item} colors={colors} />
                   ))}

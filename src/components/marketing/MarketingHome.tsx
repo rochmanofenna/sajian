@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { LanguageProvider, useLang } from '@/lib/i18n/LanguageProvider';
 import { PhoneMockup } from './PhoneMockup';
 import { Reveal } from './Reveal';
+import { createClient } from '@/lib/supabase/client';
 
 export function MarketingHome() {
   return (
@@ -51,6 +52,7 @@ function Pullquote() {
 function Header() {
   const { t } = useLang();
   const [scrolled, setScrolled] = useState(false);
+  const session = useSession();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -74,17 +76,103 @@ function Header() {
 
         <div className="sj-header__side">
           <LanguageToggle />
-          <Link href="/login" className="sj-nav-link">
-            {t('nav_login')}
-          </Link>
-          <Link href="/signup" className="sj-btn sj-btn--primary sj-btn--sm">
-            {t('cta_primary')}
-            <Arrow />
-          </Link>
+          {session.status === 'loading' && null}
+          {session.status === 'anon' && (
+            <>
+              <Link href="/login" className="sj-nav-link">
+                {t('nav_login')}
+              </Link>
+              <Link href="/signup" className="sj-btn sj-btn--primary sj-btn--sm">
+                {t('cta_primary')}
+                <Arrow />
+              </Link>
+            </>
+          )}
+          {session.status === 'owner' && (
+            <>
+              <a
+                href={session.dashboardUrl}
+                className="sj-btn sj-btn--primary sj-btn--sm"
+              >
+                {t('nav_dashboard')}
+                <Arrow />
+              </a>
+              <button type="button" onClick={session.signOut} className="sj-nav-link">
+                {t('nav_logout')}
+              </button>
+            </>
+          )}
+          {session.status === 'user' && (
+            <>
+              <Link href="/setup" className="sj-btn sj-btn--primary sj-btn--sm">
+                {t('nav_resume_setup')}
+                <Arrow />
+              </Link>
+              <button type="button" onClick={session.signOut} className="sj-nav-link">
+                {t('nav_logout')}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </header>
   );
+}
+
+type SessionState =
+  | { status: 'loading' }
+  | { status: 'anon' }
+  | { status: 'user'; signOut: () => void }
+  | { status: 'owner'; dashboardUrl: string; signOut: () => void };
+
+function useSession(): SessionState {
+  const [state, setState] = useState<SessionState>({ status: 'loading' });
+
+  useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+
+    async function signOut() {
+      await supabase.auth.signOut();
+      window.location.reload();
+    }
+
+    async function resolve() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!active) return;
+      if (!user) {
+        setState({ status: 'anon' });
+        return;
+      }
+      const { data: owned } = await supabase
+        .from('tenants')
+        .select('slug')
+        .eq('owner_user_id', user.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (!active) return;
+      const slug = owned?.[0]?.slug;
+      if (slug) {
+        const host = window.location.host;
+        const dashboardUrl = host.includes('localhost')
+          ? `http://${slug}.localhost:${window.location.port || 3000}/admin`
+          : `https://${slug}.sajian.app/admin`;
+        setState({ status: 'owner', dashboardUrl, signOut });
+      } else {
+        setState({ status: 'user', signOut });
+      }
+    }
+
+    resolve();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return state;
 }
 
 function LanguageToggle() {

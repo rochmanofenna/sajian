@@ -76,6 +76,25 @@
   50% { box-shadow: 0 0 0 6px rgba(45, 157, 90, 0); }
 }
 
+.ob-header__signout {
+  font-family: var(--ob-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ob-ink-mute);
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(10, 11, 10, 0.12);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.ob-header__signout:hover {
+  border-color: rgba(10, 11, 10, 0.32);
+  color: var(--ob-ink);
+}
+.ob-header__signout:disabled { opacity: 0.5; cursor: wait; }
+
 .ob-main { flex: 1; display: flex; min-height: 0; }
 
 .ob-booting {
@@ -445,28 +464,32 @@
   transition: width 0.35s ease, border-radius 0.35s ease, padding 0.35s ease;
 }
 
-/* Phone variant — the screen dominates, the bezel is a thin rim. Width is
-   driven by available height so the phone fills the preview pane top-to-
-   bottom on laptop screens; `min()` keeps it from exceeding the pane width
-   on ultrawide layouts. Bezel padding is intentionally tiny so the render
-   looks like a modern edge-to-edge phone, not a chunky 2015 case. */
+/* Phone variant — height-driven sizing so the whole device always fits
+   inside the preview pane. We subtract the page header (56px), preview
+   pane top/bottom padding (20 + 28), the topbar row (~42px), the gap
+   (14px) and a ~20px slack for scrollbar/zoom — ~180px total — from the
+   viewport, then let aspect-ratio compute the width. Without this, using
+   `width: min(…, 560px, 96%)` produced a phone taller than the pane and
+   the bottom got clipped off-screen. Bezel padding is thick enough on
+   every side (10/8/10) that the frame reads as a physical rim, not a
+   hairline outline. */
 .ob-device--phone {
-  width: min(calc(92svh * 9 / 19), 560px, 96%);
   aspect-ratio: 9 / 19;
-  max-height: 92svh;
+  height: min(calc(100svh - 180px), 880px);
+  max-width: 96%;
   border-radius: 46px;
-  padding: 8px 6px 6px;
+  padding: 10px 8px 10px;
 }
 .ob-device--phone .ob-device__frame {
-  border-radius: 40px;
+  border-radius: 36px;
   height: calc(100% - 2px);
 }
 .ob-device__speaker {
   position: absolute;
-  top: 4px;
+  top: 5px;
   left: 50%;
   transform: translateX(-50%);
-  width: 40px;
+  width: 38px;
   height: 3px;
   background: #0a0a08;
   border-radius: 999px;
@@ -540,7 +563,7 @@
   color: var(--ob-forest);
   z-index: 4;
 }
-.ob-device--phone .ob-device__launching { inset: 6px; border-radius: 40px; }
+.ob-device--phone .ob-device__launching { inset: 8px; border-radius: 36px; }
 .ob-device--desktop .ob-device__launching { inset: 34px 0 0 0; border-radius: 0 0 14px 14px; }
 .ob-device__error {
   position: absolute;
@@ -611,7 +634,13 @@
 
 @media (max-width: 720px) {
   .ob-preview { padding: 16px 12px 24px; }
-  .ob-device--phone { width: min(calc(70vh * 9 / 19), 340px, 92%); max-height: 70vh; }
+  .ob-device--phone {
+    height: min(calc(100svh - 200px), 680px);
+    max-width: 92%;
+    padding: 8px 6px 8px;
+    border-radius: 40px;
+  }
+  .ob-device--phone .ob-device__frame { border-radius: 32px; }
   .ob-device--desktop { width: 100%; aspect-ratio: 4 / 3; max-height: 60vh; }
   .ob-chat__kicker { display: none; }
   .ob-panel__uploads { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }

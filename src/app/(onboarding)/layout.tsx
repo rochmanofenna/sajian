@@ -3,6 +3,7 @@
 // out affordance. Keeps the owner focused on the chat + preview.
 
 import Link from 'next/link';
+import { OnboardingHeaderActions } from './header-actions';
 
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -16,6 +17,8 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
           <span className="ob-header__dot" aria-hidden="true" />
           <span>Onboarding · sesi aktif</span>
         </div>
+
+        <OnboardingHeaderActions />
       </header>
       <main className="ob-main">{children}</main>
     </div>

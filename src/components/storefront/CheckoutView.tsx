@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, QrCode, Wallet, Store } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
@@ -8,6 +8,11 @@ import { useCart } from '@/lib/cart/store';
 import { formatCurrency } from '@/lib/utils';
 import { PageNav } from '@/components/chrome/PageNav';
 import type { PaymentMethod } from '@/lib/order/schema';
+import {
+  formatIdPhoneDisplay,
+  isLikelyIdPhone,
+  normalizeIdPhone,
+} from '@/lib/auth/phone';
 
 interface MethodDef {
   value: PaymentMethod;
@@ -54,20 +59,34 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
   const [method, setMethod] = useState<PaymentMethod>(() => availableMethods[0]?.value ?? 'cashier');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [slowHint, setSlowHint] = useState(false);
+  const slowHintTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (slowHintTimer.current !== null) window.clearTimeout(slowHintTimer.current);
+    };
+  }, []);
 
   const subtotal = getSubtotal();
+  const phoneDisplay = formatIdPhoneDisplay(phone);
+  const phoneValid = isLikelyIdPhone(phone);
   const canSubmit =
     items.length > 0 &&
     branchCode &&
     orderType &&
     name.trim().length >= 2 &&
-    phone.trim().length >= 6 &&
+    phoneValid &&
     !submitting;
 
   const submit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
+    setSlowHint(false);
+    // ESB round-trips can stretch 10-20s on a bad day. Surface that the
+    // request is still alive so the customer doesn't assume it hung.
+    slowHintTimer.current = window.setTimeout(() => setSlowHint(true), 12_000);
     try {
       const res = await fetch('/api/order/submit', {
         method: 'POST',
@@ -79,7 +98,7 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
           tableNumber: orderType === 'dine_in' ? tableNumber : null,
           deliveryAddress: orderType === 'delivery' ? deliveryAddress : null,
           customerName: name.trim(),
-          customerPhone: phone.trim(),
+          customerPhone: normalizeIdPhone(phone),
           items,
           customerNotes: notes.trim() || null,
         }),
@@ -97,6 +116,12 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Gagal memproses pesanan');
       setSubmitting(false);
+    } finally {
+      if (slowHintTimer.current !== null) {
+        window.clearTimeout(slowHintTimer.current);
+        slowHintTimer.current = null;
+      }
+      setSlowHint(false);
     }
   };
 
@@ -133,11 +158,24 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
           <Label text="No. WhatsApp" />
           <input
             type="tel"
+            inputMode="tel"
+            autoComplete="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             className="w-full h-12 px-4 rounded-full border border-zinc-200 bg-white focus:outline-none focus:border-zinc-400"
-            placeholder="0812xxxxxxxx"
+            placeholder="cth: 0812 3456 7890"
           />
+          {phone.trim().length > 0 && (
+            <div
+              className={`text-xs font-mono ${
+                phoneValid ? 'text-zinc-500' : 'text-red-600'
+              }`}
+            >
+              {phoneValid
+                ? phoneDisplay
+                : 'Masukkan nomor HP Indonesia (0812xxxxxxxx).'}
+            </div>
+          )}
 
           {orderType === 'dine_in' && (
             <>
@@ -243,6 +281,12 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
         {error && (
           <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm p-3">
             {error}
+          </div>
+        )}
+
+        {slowHint && submitting && !error && (
+          <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3">
+            Masih diproses — koneksi ke POS agak lambat. Tunggu sebentar lagi…
           </div>
         )}
 
