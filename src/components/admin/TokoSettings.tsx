@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
 import { THEME_TEMPLATES, type ThemeTemplate } from '@/lib/tenant-types';
+import { AdvancedModeToggle } from './AdvancedModeToggle';
 
 const TEMPLATE_DESCRIPTIONS: Record<ThemeTemplate, string> = {
   kedai: 'Warm, editorial. Coffee shops, bakeries, specialty cafés.',
@@ -385,6 +386,9 @@ export function TokoSettings({ tenant }: { tenant: PublicTenant }) {
           Slug toko tidak bisa diubah sendiri — QR code dan link yang sudah dibagikan akan rusak. Hubungi support kalau perlu ganti.
         </p>
       </section>
+
+      {/* Advanced mode opt-in */}
+      <AdvancedModeToggle />
 
       {/* Danger zone */}
       <section className="rounded-xl border border-red-200 bg-red-50/50 p-4 space-y-3">
