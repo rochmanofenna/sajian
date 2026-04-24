@@ -78,6 +78,8 @@ export function PreviewClient({ initial }: { initial: TenantDraft }) {
   if (hasSections) {
     return (
       <div className="min-h-screen" style={{ background: colors.background, color: colors.dark }}>
+        {/* StorefrontRenderer wraps each section in SectionErrorBoundary already,
+            so a bad draft in preview isolates to the section that crashed. */}
         <StorefrontRenderer sections={sections} ctx={draftToContext(draft)} />
       </div>
     );

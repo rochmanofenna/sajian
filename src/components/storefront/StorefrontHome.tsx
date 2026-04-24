@@ -22,7 +22,7 @@ export async function StorefrontHome({ tenant }: { tenant: PublicTenant }) {
         style={{ background: tenant.colors.background, color: tenant.colors.dark }}
       >
         <div className="flex-1">
-          <StorefrontRenderer sections={sections} ctx={ctx} />
+          <StorefrontRenderer sections={sections} ctx={ctx} tenantId={tenant.id} />
         </div>
         <StoreFooter tenant={tenant} />
       </div>

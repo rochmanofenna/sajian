@@ -12,13 +12,15 @@ import type {
   SectionContext,
   StorefrontSection,
 } from '@/lib/storefront/section-types';
+import { SectionErrorBoundary } from './SectionErrorBoundary';
 
 interface Props {
   sections: StorefrontSection[];
   ctx: SectionContext;
+  tenantId?: string;
 }
 
-export function StorefrontRenderer({ sections, ctx }: Props) {
+export function StorefrontRenderer({ sections, ctx, tenantId }: Props) {
   const visible = sections
     .filter((s) => s.is_visible !== false && isKnownSection(s.type))
     .sort((a, b) => a.sort_order - b.sort_order);
@@ -39,7 +41,9 @@ export function StorefrontRenderer({ sections, ctx }: Props) {
             className="sj-section-slot"
             style={{ animationDelay: `${Math.min(i * 80, 360)}ms` }}
           >
-            <Component section={section} ctx={ctx} props={sectionProps} />
+            <SectionErrorBoundary section={section} ctx={ctx} tenantId={tenantId}>
+              <Component section={section} ctx={ctx} props={sectionProps} />
+            </SectionErrorBoundary>
           </div>
         );
       })}
