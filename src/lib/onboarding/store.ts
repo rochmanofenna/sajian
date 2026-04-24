@@ -28,6 +28,7 @@ import {
   updateSectionVariant as updateSectionVariantHelper,
 } from '@/lib/storefront/section-actions';
 import { defaultSections } from '@/lib/storefront/default-sections';
+import { seedSectionProps } from '@/lib/storefront/section-defaults';
 
 interface OnboardingState {
   userId: string | null;
@@ -234,9 +235,16 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
     let createdId = '';
     set((s) => {
       const existing = s.draft.sections ?? [];
-      const next = addSectionHelper(existing, { type, variant, props, position });
-      // The new section is the last one added by addSectionHelper — find it
-      // by diffing ids so we can return the id to the caller.
+      // Fill in placeholder content (reviews, about blurb, featured items,
+      // gallery photos) when the AI left props empty. Deliberately-provided
+      // props are never clobbered.
+      const seededProps = seedSectionProps(type, props, s.draft);
+      const next = addSectionHelper(existing, {
+        type,
+        variant,
+        props: seededProps,
+        position,
+      });
       const existingIds = new Set(existing.map((x) => x.id));
       createdId = next.find((x) => !existingIds.has(x.id))?.id ?? '';
       return { draft: { ...s.draft, sections: next } };
