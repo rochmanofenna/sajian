@@ -31,12 +31,19 @@ interface SeedResult {
 async function seedDraftFromLiveTenant(): Promise<SeedResult | null> {
   const host = window.location.hostname;
   const sub = host.split(':')[0].split('.')[0];
-  if (!sub || sub === 'sajian' || sub === 'www' || sub === 'localhost') return null;
+  if (!sub || sub === 'sajian' || sub === 'www' || sub === 'app' || sub === 'localhost') return null;
 
   try {
+    // Hard cap the seed-from-live fetch so a slow ESB call can't stall
+    // the entire /setup boot. The page falls through to the fresh-
+    // onboarding flow if this times out.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(`/api/onboarding/seed-from-live?slug=${encodeURIComponent(sub)}`, {
       cache: 'no-store',
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     if (!res.ok) {
       // 401/403/404 just mean "this user isn't the owner of this subdomain"
       // — treat as a silent no-op so a stranger hitting /setup on a tenant
@@ -46,7 +53,8 @@ async function seedDraftFromLiveTenant(): Promise<SeedResult | null> {
     const body = (await res.json()) as SeedResult;
     if (!body.draft) return null;
     return body;
-  } catch {
+  } catch (err) {
+    console.warn('[setup] seed-from-live failed', err);
     return null;
   }
 }
@@ -64,16 +72,27 @@ export default function SetupPage() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
+    const bootedAt = Date.now();
+    console.log('[setup] mount', { href: window.location.href });
     (async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace('/signup');
-        return;
-      }
-      await init(user.id, user.phone ?? user.email ?? '');
+      try {
+        const supabase = createClient();
+        console.log('[setup] supabase client ready', { ms: Date.now() - bootedAt });
+        const {
+          data: { user },
+          error: userErr,
+        } = await supabase.auth.getUser();
+        console.log('[setup] auth.getUser resolved', {
+          ms: Date.now() - bootedAt,
+          hasUser: Boolean(user),
+          err: userErr?.message,
+        });
+        if (!user) {
+          router.replace('/signup');
+          return;
+        }
+        await init(user.id, user.phone ?? user.email ?? '');
+        console.log('[setup] draft init complete', { ms: Date.now() - bootedAt });
 
       // Re-seed from the live tenant on entry when we're on a tenant
       // subdomain. Two cases trigger this:
@@ -134,7 +153,14 @@ export default function SetupPage() {
         }
       }
 
-      setBooting(false);
+        console.log('[setup] boot finished', { ms: Date.now() - bootedAt });
+        setBooting(false);
+      } catch (err) {
+        console.error('[setup] boot failed', err);
+        // Fail open — let the owner see the UI even if seed-from-live
+        // stalls; the chat still works against the local draft.
+        setBooting(false);
+      }
     })();
   }, [init, router]);
 
