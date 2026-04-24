@@ -9,18 +9,11 @@ import { getPublicTenantAnyStatus } from '@/lib/tenant';
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const tenant = await getPublicTenantAnyStatus();
 
+  // When there's no tenant context (e.g. /admin/codegen on the app
+  // origin, or /admin hit directly on sajian.app) pass through — the
+  // page or nested layout is responsible for its own chrome + gate.
   if (!tenant) {
-    return (
-      <main className="flex-1 flex items-center justify-center px-6 py-24 bg-zinc-50">
-        <div className="max-w-md text-center space-y-4">
-          <h1 className="text-2xl font-semibold">Dashboard tenant tidak ditemukan</h1>
-          <p className="text-zinc-600">
-            Dashboard hanya tersedia di subdomain tenant, misalnya{' '}
-            <span className="font-mono">mindiology.sajian.app/admin</span>.
-          </p>
-        </div>
-      </main>
-    );
+    return <>{children}</>;
   }
 
   return (
