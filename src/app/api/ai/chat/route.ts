@@ -173,12 +173,25 @@ export async function POST(req: Request) {
     }
 
     const draft = body.draft ?? {};
+
+    // Drop any history entries with empty content before handing off to
+    // Claude — Anthropic rejects the entire request if a single message
+    // has "" for content. The UI pushes empty-content bubbles for photo
+    // uploads (the attachments render locally, the text is blank), and
+    // those sneak into the history next time the user sends a text.
+    const cleanMessages = body.messages
+      .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
+      .map((m) => ({ role: m.role, content: m.content.trim() }));
+    if (cleanMessages.length === 0) {
+      return badRequest('messages required');
+    }
+
     const anthropic = getAnthropic();
     const res = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 1024,
       system: SYSTEM(draft),
-      messages: body.messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: cleanMessages,
     });
 
     const text = res.content[0].type === 'text' ? res.content[0].text : '';

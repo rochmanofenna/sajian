@@ -135,9 +135,10 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         ],
       });
     } catch (e) {
+      console.error('[logo] generate failed', e);
       await pushMessage({
         role: 'assistant',
-        content: `Maaf, ada error: ${(e as Error).message}`,
+        content: 'Logo gagal dibikin. Coba lagi sebentar atau upload logo kamu sendiri.',
         kind: 'text',
       });
     } finally {
@@ -153,7 +154,12 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
     setLoading(true);
 
     try {
-      const history = [...messages, userMsg].map((m) => ({ role: m.role, content: m.content }));
+      // Keep only messages with non-empty text content — photo-upload
+      // bubbles carry content='' and Claude's API rejects an entire request
+      // if any entry has empty content.
+      const history = [...messages, userMsg]
+        .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
+        .map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -170,9 +176,10 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
           : [];
       for (const a of actions) await applyAction(a);
     } catch (e) {
+      console.error('[chat] send failed', e);
       await pushMessage({
         role: 'assistant',
-        content: `Maaf, ada error: ${(e as Error).message}. Coba lagi.`,
+        content: 'Maaf, ada kendala sebentar. Coba kirim ulang pesan kamu.',
         kind: 'text',
       });
     } finally {
@@ -206,9 +213,10 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         kind: 'menu_extracted',
       });
     } catch (e) {
+      console.error('[menu] extraction failed', e);
       await pushMessage({
         role: 'assistant',
-        content: `Maaf, ada error: ${(e as Error).message}`,
+        content: 'Gagal baca menu. Coba foto yang lebih jelas atau kirim per halaman.',
         kind: 'text',
       });
     } finally {
@@ -243,9 +251,10 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         kind: 'colors_extracted',
       });
     } catch (e) {
+      console.error('[colors] extraction failed', e);
       await pushMessage({
         role: 'assistant',
-        content: `Maaf, ada error: ${(e as Error).message}`,
+        content: 'Gagal analisa warna. Coba foto yang berbeda.',
         kind: 'text',
       });
     } finally {
@@ -281,9 +290,10 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         kind: 'text',
       });
     } catch (e) {
+      console.error('[logo] upload failed', e);
       await pushMessage({
         role: 'assistant',
-        content: `Maaf, ada error: ${(e as Error).message}`,
+        content: 'Upload logo gagal. Coba file yang berbeda (PNG/SVG/JPG).',
         kind: 'text',
       });
     } finally {
