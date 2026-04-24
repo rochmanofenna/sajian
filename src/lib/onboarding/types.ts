@@ -45,7 +45,11 @@ export type SectionType =
   | 'featured_items'
   | 'gallery'
   | 'promo'
-  | 'contact';
+  | 'contact'
+  | 'testimonials'
+  | 'social'
+  | 'location'
+  | 'announcement';
 
 export interface StorefrontSection {
   id: string;
