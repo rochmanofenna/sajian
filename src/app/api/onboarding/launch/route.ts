@@ -9,7 +9,38 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { errorResponse, badRequest } from '@/lib/api/errors';
 import { generateSlug, isValidSlug } from '@/lib/onboarding/slug';
-import type { TenantDraft } from '@/lib/onboarding/types';
+import type { TenantDraft, StorefrontSection } from '@/lib/onboarding/types';
+import { isKnownSection } from '@/lib/storefront/section-registry';
+
+// Idempotent: wipes the tenant's existing sections and inserts the draft
+// stack in order. Keeps sort_order contiguous so the renderer always lists
+// them in author-intended sequence.
+async function persistSections(
+  service: ReturnType<typeof createServiceClient>,
+  tenantId: string,
+  sections: StorefrontSection[] | undefined,
+) {
+  if (!sections || sections.length === 0) return;
+  const { error: delErr } = await service
+    .from('storefront_sections')
+    .delete()
+    .eq('tenant_id', tenantId);
+  if (delErr) throw delErr;
+
+  const rows = sections
+    .filter((s) => isKnownSection(s.type))
+    .map((s, idx) => ({
+      tenant_id: tenantId,
+      type: s.type,
+      variant: s.variant,
+      sort_order: idx * 10,
+      props: s.props ?? {},
+      is_visible: s.is_visible !== false,
+    }));
+  if (rows.length === 0) return;
+  const { error: insErr } = await service.from('storefront_sections').insert(rows);
+  if (insErr) throw insErr;
+}
 
 export async function POST() {
   try {
@@ -120,6 +151,8 @@ export async function POST() {
         }
       }
 
+      await persistSections(service, existing.id, payload.sections);
+
       return NextResponse.json({
         tenant_id: existing.id,
         slug: existing.slug,
@@ -143,6 +176,8 @@ export async function POST() {
     }
 
     const result = data as { tenant_id: string; slug: string };
+    await persistSections(service, result.tenant_id, payload.sections);
+
     return NextResponse.json({
       tenant_id: result.tenant_id,
       slug: result.slug,

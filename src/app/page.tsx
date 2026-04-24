@@ -12,3 +12,5 @@ export default async function Home() {
   if (tenant) return <StorefrontHome tenant={tenant} />;
   return <MarketingHome />;
 }
+
+export const dynamic = 'force-dynamic';
