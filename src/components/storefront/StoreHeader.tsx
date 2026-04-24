@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import type { PublicTenant } from '@/lib/tenant';
 import { CartButton } from './CartButton';
+import { AccountMenu } from './auth/AccountMenu';
 
 export function StoreHeader({ tenant }: { tenant: PublicTenant }) {
   return (
@@ -25,6 +26,7 @@ export function StoreHeader({ tenant }: { tenant: PublicTenant }) {
           <Link href="/menu" className="text-sm text-zinc-700 hover:text-zinc-900">
             Menu
           </Link>
+          <AccountMenu tenant={tenant} />
           <CartButton tenant={tenant} />
         </div>
       </div>
