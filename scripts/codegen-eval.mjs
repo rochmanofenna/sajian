@@ -80,15 +80,57 @@ async function askChat(prompt) {
 }
 
 async function dryCompile(sourceJsx) {
-  // A dry compile without persisting — we'd need a dedicated endpoint
-  // for that. For now, we can't call /api/sections/compile without
-  // owning an existing section. Instead, the harness records the
-  // emitted source_jsx and flags compile success as "unknown" when the
-  // API path isn't exposed. TODO: add /api/sections/compile/dry-run.
-  return { skipped: true, reason: 'no-dry-run-endpoint', bytes: sourceJsx.length };
+  try {
+    const res = await fetch(`${BASE_URL}/api/sections/compile/dry-run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: AUTH_COOKIE,
+      },
+      body: JSON.stringify({ source_jsx: sourceJsx }),
+    });
+    const body = await res.json();
+    return {
+      ok: res.ok && body?.ok === true,
+      status: res.status,
+      stage: body?.stage ?? null,
+      error: body?.error?.message ?? body?.error ?? null,
+      bytes: sourceJsx.length,
+      compile_ms: body?.compile_ms ?? null,
+      path: body?.path ?? null,
+    };
+  } catch (err) {
+    return { ok: false, reason: err.message, bytes: sourceJsx.length };
+  }
+}
+
+async function preflight() {
+  const res = await fetch(`${BASE_URL}/api/feature-flags/me`, {
+    headers: { Cookie: AUTH_COOKIE },
+  });
+  if (!res.ok) {
+    throw new Error(
+      `feature-flags preflight failed (${res.status}). Make sure AUTH_COOKIE is a valid owner session on a tenant subdomain.`,
+    );
+  }
+  const body = await res.json();
+  if (!body.codegen_globally_enabled) {
+    throw new Error('codegen_globally_enabled=false — the eval would measure nothing.');
+  }
+  if (!body.codegen_enabled) {
+    throw new Error(
+      `Tenant ${body.tenant_id} has codegen disabled. Enable it from /admin → Store → Mode lanjutan before running the eval.`,
+    );
+  }
+  return body;
 }
 
 async function main() {
+  const flagState = await preflight();
+  console.log(
+    `preflight ok — tenant ${flagState.tenant_id} codegen_enabled=${flagState.codegen_enabled}`,
+  );
+
   const results = [];
   const start = Date.now();
   for (let i = 0; i < PROMPTS.length; i += 1) {
@@ -118,27 +160,42 @@ async function main() {
   const total = Date.now() - start;
 
   const firstAttemptOk = results.filter((r) => r.ok).length;
-  const customAttempted = results.filter((r) => r.actions.includes('add_custom_section') || r.actions.includes('update_custom_section')).length;
+  const customAttempted = results.filter(
+    (r) =>
+      r.actions.includes('add_custom_section') ||
+      r.actions.includes('update_custom_section'),
+  ).length;
+  const compileAttempted = results.filter((r) => r.compile).length;
+  const compileOk = results.filter((r) => r.compile?.ok === true).length;
 
   const lines = [
     '# Codegen eval scorecard',
     '',
+    `- Tenant: ${flagState.tenant_id}`,
     `- Prompts run: ${results.length}`,
     `- First-attempt action emitted: ${firstAttemptOk}/${results.length} (${Math.round((firstAttemptOk / results.length) * 100)}%)`,
     `- Custom-section attempts: ${customAttempted}/${results.length}`,
+    compileAttempted > 0
+      ? `- Dry-run compile success: ${compileOk}/${compileAttempted} (${Math.round((compileOk / compileAttempted) * 100)}%)`
+      : '- Dry-run compile success: n/a',
     `- Total wall time: ${total} ms`,
     '',
     '## Per-prompt outcomes',
     '',
-    '| # | Prompt | Actions | source_jsx | Time |',
-    '|---|---|---|---|---|',
+    '| # | Prompt | Actions | source_jsx | Compile | Time |',
+    '|---|---|---|---|---|---|',
   ];
   for (let i = 0; i < results.length; i += 1) {
     const r = results[i];
     const actions = r.actions.length ? r.actions.join(', ') : 'none';
     const bytes = r.source_jsx_bytes ? `${r.source_jsx_bytes} B` : '-';
+    const compile = r.compile
+      ? r.compile.ok
+        ? `ok · ${r.compile.path ?? ''}${r.compile.compile_ms ? ` · ${r.compile.compile_ms}ms` : ''}`
+        : `fail${r.compile.stage ? ` · ${r.compile.stage}` : ''}`
+      : '-';
     const short = r.prompt.length > 60 ? `${r.prompt.slice(0, 60)}…` : r.prompt;
-    lines.push(`| ${i + 1} | ${short} | ${actions} | ${bytes} | ${r.ms} ms |`);
+    lines.push(`| ${i + 1} | ${short} | ${actions} | ${bytes} | ${compile} | ${r.ms} ms |`);
   }
   const md = lines.join('\n');
   writeFileSync(new URL('../docs/CODEGEN_EVAL_RESULTS.md', import.meta.url), md);
