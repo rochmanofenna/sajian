@@ -11,12 +11,20 @@ interface MapContext {
 
 const PATTERNS: Array<{ match: RegExp; msg: (ctx: MapContext) => string }> = [
   // --- phone / sms provider unavailable ----------------------------------
+  // Supabase returns "Signups not allowed for otp" when the provider has
+  // signups disabled. It ALSO returns the same string on login for a
+  // non-existent user — distinguish by stage. Phone users get a fallback
+  // suggestion; email users get "try again" without "contact support"
+  // (the config fix is in Supabase, not a support ticket).
   {
     match: /signups?\s+not\s+allowed\s+for\s+otp/i,
-    msg: ({ method }) =>
-      method === 'phone'
-        ? 'SMS belum tersedia. Silakan pakai email untuk sementara.'
-        : 'Pendaftaran email belum tersedia. Hubungi support.',
+    msg: ({ method, stage }) => {
+      if (stage === 'verify') return 'Kode verifikasi salah. Coba lagi.';
+      if (method === 'phone') {
+        return 'SMS belum tersedia. Silakan pakai email untuk sementara.';
+      }
+      return 'Akun belum terdaftar. Daftar dulu di /signup.';
+    },
   },
   {
     match: /unsupported\s+phone\s+provider/i,
@@ -25,6 +33,10 @@ const PATTERNS: Array<{ match: RegExp; msg: (ctx: MapContext) => string }> = [
   {
     match: /phone\s+provider.*not\s+configured/i,
     msg: () => 'SMS belum aktif. Silakan pakai email.',
+  },
+  {
+    match: /email\s+provider.*not\s+configured|email\s+not\s+enabled|email\s+signups?\s+disabled/i,
+    msg: () => 'Login email belum aktif. Coba lagi nanti atau hubungi support.',
   },
   // --- verification failures ---------------------------------------------
   {
@@ -75,6 +87,18 @@ const PATTERNS: Array<{ match: RegExp; msg: (ctx: MapContext) => string }> = [
 
 export function mapAuthError(err: unknown, ctx: MapContext): string {
   if (!err) return 'Terjadi kesalahan. Coba lagi nanti.';
+  // Log the raw error so the real Supabase code / status is visible in
+  // Vercel logs when a user reports a cryptic Indonesian message.
+  if (typeof window !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.error('[auth] raw supabase error', {
+      method: ctx.method,
+      stage: ctx.stage,
+      message: err instanceof Error ? err.message : String(err),
+      name: err instanceof Error ? err.name : undefined,
+      ...(typeof err === 'object' && err !== null ? (err as Record<string, unknown>) : {}),
+    });
+  }
   const message =
     err instanceof Error ? err.message : typeof err === 'string' ? err : String(err);
   for (const { match, msg } of PATTERNS) {
