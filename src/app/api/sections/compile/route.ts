@@ -19,6 +19,7 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { compileSection } from '@/lib/storefront/compile';
 import { sanitizeSlotTree, SanitizerError } from '@/lib/storefront/sanitizer';
 import { allow } from '@/lib/ai/rate-limit';
+import { isCodegenEnabled } from '@/lib/feature-flags';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -36,6 +37,18 @@ const bodySchema = z
 export async function POST(req: Request) {
   try {
     const { tenant, userId } = await requireOwnerOrThrow();
+
+    // Gate codegen at the compile boundary too — if the tenant isn't
+    // flagged (or the global kill switch is flipped), reject with a
+    // stable error code the client can show in-copy. This is the
+    // belt-and-suspenders twin of the chat-route prompt stripping.
+    if (!(await isCodegenEnabled(tenant.id))) {
+      return NextResponse.json(
+        { error: 'codegen_disabled' },
+        { status: 403 },
+      );
+    }
+
     const gate = allow('sections-compile', `t:${tenant.id}`, { max: 10, windowMs: 60_000 });
     if (!gate.ok) {
       return NextResponse.json(

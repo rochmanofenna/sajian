@@ -20,6 +20,8 @@ import { allow, AI_RATE_PROFILES } from '@/lib/ai/rate-limit';
 import { identityKey } from '@/lib/api/auth';
 import type { OnboardingAction, TenantDraft } from '@/lib/onboarding/types';
 import { SECTION_VARIANTS } from '@/lib/storefront/section-types';
+import { isCodegenEnabled } from '@/lib/feature-flags';
+import { getOwnerOrNull } from '@/lib/admin/auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -94,7 +96,7 @@ function sectionPropsCatalog(): string {
   ].join('\n');
 }
 
-const SYSTEM = (draft: TenantDraft) => {
+const SYSTEM = (draft: TenantDraft, codegenAllowed: boolean) => {
   const reSetup = isReSetupMode(draft);
   const isEsb = draft.pos_provider === 'esb';
   const header = reSetup
@@ -138,8 +140,12 @@ const SYSTEM = (draft: TenantDraft) => {
   // ORDER is strict — prefer section variants and slot props; reach
   // for add_custom_section only when interactivity/composition truly
   // needs it. This block trades ~800 tokens of prompt budget for the
-  // retry-free rate of add_custom_section.
-  const codegenCapabilities = `
+  // retry-free rate of add_custom_section. Stripped entirely when the
+  // tenant doesn't have codegen enabled — Claude never learns it's
+  // an option so it can't suggest it.
+  const codegenCapabilities = !codegenAllowed
+    ? ''
+    : `
 
 CODEGEN CAPABILITIES (last resort — see DECISION ORDER below):
 
@@ -227,10 +233,10 @@ When the user requests concrete changes, append one OR MORE action markers at th
   <!--ACTION:{"type":"reorder_sections","order":["hero","featured_items","gallery","about","contact"]}-->
   <!--ACTION:{"type":"add_section","section_type":"canvas","variant":"freeform","position":"after:hero","props":{"height_vh":70,"background":{"kind":"image","value":"https://.../bg.jpg"},"elements":[{"id":"e1","kind":"text","content":"Sate Taichan Uda","position":{"anchor":"center","offset_x":0,"offset_y":-20},"size":{"width":"auto","height":"auto"},"style":{"color":"#FFFFFF","font_size":48,"font_weight":700}},{"id":"e2","kind":"button","content":"Pesan Sekarang","href":"/menu","position":{"anchor":"bottom-right","offset_x":24,"offset_y":24},"size":{"width":"auto","height":"auto"},"style":{"background":"#CD7F32","color":"#FFFFFF","padding":16,"border_radius":999}}]}}-->
   <!--ACTION:{"type":"generate_section_image","section_id":"<id>","prompt":"suasana hangat meja kayu","prop_key":"image_url"}-->
-  <!--ACTION:{"type":"add_custom_section","position":"after:hero","source_jsx":"<Motion enter=\\"slide-up\\" hover=\\"lift\\"><Overlay anchor=\\"bottom-right\\" offset_x={24} offset_y={24}><Button content=\\"Pesan Sekarang\\" href=\\"/menu\\" size=\\"md\\" /></Overlay></Motion>"}-->
+${codegenAllowed ? `  <!--ACTION:{"type":"add_custom_section","position":"after:hero","source_jsx":"<Motion enter=\\"slide-up\\" hover=\\"lift\\"><Overlay anchor=\\"bottom-right\\" offset_x={24} offset_y={24}><Button content=\\"Pesan Sekarang\\" href=\\"/menu\\" size=\\"md\\" /></Overlay></Motion>"}-->
   <!--ACTION:{"type":"add_custom_section","position":"after:hero","source_jsx":"<Box padding={24}><Stack direction=\\"col\\" align=\\"center\\" gap={12}><Text content=\\"Diskon Lebaran\\" style={{\\"font-size\\":32,\\"font-weight\\":700,\\"color\\":\\"#CD7F32\\"}} /><Countdown target_iso=\\"2026-04-10T00:00:00+07:00\\" format=\\"dhms\\" on_expire=\\"hide\\" /><Button content=\\"Pesan Sekarang\\" href=\\"/menu\\" size=\\"lg\\" /></Stack></Box>"}-->
   <!--ACTION:{"type":"add_custom_section","position":"before:contact","source_jsx":"<TimeOfDay from_hour={17} to_hour={21}><Box background=\\"#FFF3E0\\" padding={16}><Text content=\\"Promo happy hour: 20% semua minuman\\" /></Box></TimeOfDay>"}-->
-  <!--ACTION:{"type":"update_custom_section","section_id":"<id>","source_jsx":"<Motion enter=\\"fade\\"><Text content=\\"Updated\\" /></Motion>"}-->
+  <!--ACTION:{"type":"update_custom_section","section_id":"<id>","source_jsx":"<Motion enter=\\"fade\\"><Text content=\\"Updated\\" /></Motion>"}-->` : ''}
   <!--ACTION:{"type":"generate_hero_image","prompt":"ambience coffee shop di sore hari"}-->
   <!--ACTION:{"type":"set_template","template":"kedai"}-->
   <!--ACTION:{"type":"ready_to_launch"}-->
@@ -377,6 +383,10 @@ const ESB_FORBIDDEN_ACTIONS = new Set([
   'generate_all_photos',
 ]);
 
+// Codegen-gated actions. Stripped server-side when feature flag is off
+// — belt-and-suspenders for the prompt-level omission.
+const CODEGEN_GATED_ACTIONS = new Set(['add_custom_section', 'update_custom_section']);
+
 export async function POST(req: Request) {
   try {
     const key = await identityKey(req);
@@ -395,6 +405,13 @@ export async function POST(req: Request) {
 
     const draft = body.draft ?? {};
 
+    // Resolve the live tenant (if this chat is running against a
+    // launched tenant). Pre-launch onboarding has no tenant row yet;
+    // in that case `tenantId` stays null and codegen defaults off.
+    const session = await getOwnerOrNull();
+    const tenantId = session?.tenant.id ?? null;
+    const codegenAllowed = await isCodegenEnabled(tenantId);
+
     // Drop any history entries with empty content before handing off to
     // Claude — Anthropic rejects the entire request if a single message
     // has "" for content. The UI pushes empty-content bubbles for photo
@@ -411,13 +428,17 @@ export async function POST(req: Request) {
     const res = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 1024,
-      system: SYSTEM(draft),
+      system: SYSTEM(draft, codegenAllowed),
       messages: cleanMessages,
     });
 
     const text = res.content[0].type === 'text' ? res.content[0].text : '';
     let actions = parseActions(text);
     let clean = text.replace(/<!--ACTION:[\s\S]*?-->/g, '').trim();
+
+    if (!codegenAllowed) {
+      actions = actions.filter((a) => !CODEGEN_GATED_ACTIONS.has(a.type));
+    }
 
     if (draft.pos_provider === 'esb') {
       const blocked = actions.filter((a) => ESB_FORBIDDEN_ACTIONS.has(a.type));
