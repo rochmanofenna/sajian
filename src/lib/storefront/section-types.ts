@@ -20,6 +20,7 @@ export const SECTION_VARIANTS: Record<SectionType, readonly string[]> = {
   social: ['icons', 'feed'],
   location: ['map'],
   announcement: ['bar', 'modal'],
+  canvas: ['freeform'],
 };
 
 // Props every section receives in addition to its own `props` bag. These

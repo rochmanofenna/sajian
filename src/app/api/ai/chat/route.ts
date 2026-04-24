@@ -76,7 +76,7 @@ function sectionCatalog(): string {
 // manual" for anything below.
 function sectionPropsCatalog(): string {
   return [
-    '  - hero (all variants): cta_label (string, default "Lihat Menu"), cta_href (string, default "/menu"), cta_size ("sm"|"md"|"lg", default "md"), cta_align ("left"|"center"|"right"), cta_visible (boolean), subhead (string)',
+    '  - hero (all variants): cta_label (string, default "Lihat Menu"), cta_href (string, default "/menu"), cta_size ("sm"|"md"|"lg", default "md"), cta_align ("left"|"center"|"right"), cta_vertical ("top"|"middle"|"bottom", fullscreen variant only), cta_visible (boolean), content_vertical ("top"|"middle"|"bottom", fullscreen variant only), subhead (string)',
     '  - about (all variants): heading (string), body (string), text_align ("left"|"center"|"right", default "left"), heading_size ("sm"|"md"|"lg", default "md"), cta_label (string), cta_href (string), cta_size ("sm"|"md"|"lg"), cta_align ("left"|"center"|"right"), cta_visible (boolean, default false — opt-in)',
     '  - about (with_image): + image_url (string), image_position ("left"|"right", default "right")',
     '  - about (story): + timeline (array of {year,title,body})',
@@ -90,6 +90,7 @@ function sectionPropsCatalog(): string {
     '  - social (icons|feed): heading (string), instagram (handle), tiktok (handle), facebook (handle), whatsapp (number), photos (array, feed variant)',
     '  - location (map): heading (string), address (string), query (string), hours_line (string)',
     '  - announcement (bar|modal): message (string), cta_label (string), cta_href (string), version (string, modal variant)',
+    '  - canvas (freeform): height_vh (10-100, default 60), background ({kind:"color"|"image"|"gradient", value:string}), elements (array of {id, kind:"text"|"button"|"image"|"shape", position:{anchor, offset_x, offset_y}, size:{width, height}, content?, href?, src?, shape?, style:{color, background, font_size 8-160, font_weight 400-700, border_radius, padding 0-96, opacity 0-1}}). Anchors: top-left, top-right, bottom-left, bottom-right, top-center, bottom-center, center-left, center-right, center. Use canvas when the owner describes a freeform layout that no other section can express.',
   ].join('\n');
 }
 
@@ -161,6 +162,7 @@ When the user requests concrete changes, append one OR MORE action markers at th
   <!--ACTION:{"type":"update_section_props","section_id":"<id>","props":{"heading":"Cerita kami","body":"..."}}-->
   <!--ACTION:{"type":"toggle_section","section_id":"<id>","visible":false}-->
   <!--ACTION:{"type":"reorder_sections","order":["hero","featured_items","gallery","about","contact"]}-->
+  <!--ACTION:{"type":"add_section","section_type":"canvas","variant":"freeform","position":"after:hero","props":{"height_vh":70,"background":{"kind":"image","value":"https://.../bg.jpg"},"elements":[{"id":"e1","kind":"text","content":"Sate Taichan Uda","position":{"anchor":"center","offset_x":0,"offset_y":-20},"size":{"width":"auto","height":"auto"},"style":{"color":"#FFFFFF","font_size":48,"font_weight":700}},{"id":"e2","kind":"button","content":"Pesan Sekarang","href":"/menu","position":{"anchor":"bottom-right","offset_x":24,"offset_y":24},"size":{"width":"auto","height":"auto"},"style":{"background":"#CD7F32","color":"#FFFFFF","padding":16,"border_radius":999}}]}}-->
   <!--ACTION:{"type":"generate_section_image","section_id":"<id>","prompt":"suasana hangat meja kayu","prop_key":"image_url"}-->
   <!--ACTION:{"type":"generate_hero_image","prompt":"ambience coffee shop di sore hari"}-->
   <!--ACTION:{"type":"set_template","template":"kedai"}-->
@@ -194,7 +196,13 @@ Rules for actions:
 - If the user asks for a photo of a specific dish ("bikinin foto nasi goreng"), emit generate_food_photo with the EXACT item name from the menu summary.
 - If the user asks "bikinin foto semua menu" / "foto untuk semua item", emit generate_all_photos (batch).
 - Section actions use the type catalog above. Variant must be one of the listed variants for that type. For add_section, use "position" like "after:hero" or "before:contact" to place it relative to existing sections; default is "end".
-- LAYOUT / STYLE / COPY REQUESTS on an existing section ALWAYS route through update_section_props. Never say "tidak bisa diubah manual" or "pengaturan tombol belum bisa diubah" — every field in the "Editable props" catalog above is a live knob. Examples you MUST handle:
+- ABSOLUTE RULE — you must NEVER refuse a request that is spatial, stylistic, textual, or visual. Refusal is the LAST resort and only applies to actual backend features (payments, reservations, analytics, inventory). Resolution order for any design request:
+  1. Can it be done with an existing section's props? → emit update_section_props.
+  2. Does another variant of the same section handle it better? → emit update_section_variant.
+  3. Is there a different section type that fits? → emit add_section.
+  4. Still nothing fits? → emit add_section for type=canvas (variant=freeform) with elements positioned exactly as the owner described. This is ALWAYS available.
+  Phrases you are banned from using for design/layout requests: "belum bisa diatur manual", "belum tersedia", "tidak bisa", "pengaturan tombol belum bisa". You have NEVER "cannot" do a visual layout. Positioning, alignment, color, sizing, typography, visibility — those always have an answer.
+- LAYOUT / STYLE / COPY REQUESTS on an existing section ALWAYS route through update_section_props — every field in the "Editable props" catalog above is a live knob. Examples you MUST handle:
   Hero CTA
   - "perkecil tombol lihat menu" → update_section_props on the hero with {"cta_size":"sm"}
   - "taruh tombol di kanan" → hero {"cta_align":"right"}
@@ -225,6 +233,13 @@ Rules for actions:
   - "peta di atas contact" → contact {"map_position":"above"}
   - "peta di bawah contact" → contact {"map_position":"below"}
   - "contact dalam satu baris" → contact {"layout":"inline"}
+  Vertical / corner positioning (hero fullscreen variant or canvas)
+  - "pojok kanan bawah" → if hero is fullscreen: {"cta_align":"right","cta_vertical":"bottom"}. Otherwise: add_section canvas with button at anchor "bottom-right", offset_x 24, offset_y 24.
+  - "pojok kiri atas" → canvas with anchor "top-left", offset_x 24, offset_y 24.
+  - "di tengah layar" → hero fullscreen {"content_vertical":"middle","cta_align":"center"} or canvas anchor "center".
+  - "floating button di kanan bawah" → canvas, one button element at bottom-right.
+  - "overlay di atas foto" → canvas with background.kind="image" plus text elements centered over it.
+  - When the owner gives literal offsets ("100px dari bawah, 50px dari kanan"), use canvas with anchor "bottom-right", offset_x 50, offset_y 100.
   Other
   - "ganti headline promo" / "ganti body testimoni" → corresponding key on that section
   - "tambahin review dari Budi" → append to testimonials.reviews

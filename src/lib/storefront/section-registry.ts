@@ -3,6 +3,7 @@
 
 import { About } from '@/components/storefront/sections/About';
 import { Announcement } from '@/components/storefront/sections/Announcement';
+import { Canvas } from '@/components/storefront/sections/Canvas';
 import { Contact } from '@/components/storefront/sections/Contact';
 import { FeaturedItems } from '@/components/storefront/sections/FeaturedItems';
 import { Gallery } from '@/components/storefront/sections/Gallery';
@@ -27,6 +28,7 @@ export const SECTION_REGISTRY: Record<SectionType, SectionComponent> = {
   social: Social as SectionComponent,
   location: Location as SectionComponent,
   announcement: Announcement as SectionComponent,
+  canvas: Canvas as SectionComponent,
 };
 
 export function isKnownSection(type: string): type is SectionType {

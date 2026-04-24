@@ -4,12 +4,16 @@
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
 import { ctaSizeClass, rowAlignClass, type Align, type CtaSize } from './cta';
 
+type VAlign = 'top' | 'middle' | 'bottom';
+
 interface HeroProps {
   cta_label?: string;
   cta_href?: string;
   cta_size?: CtaSize;
   cta_align?: Align;
+  cta_vertical?: VAlign;
   cta_visible?: boolean;
+  content_vertical?: VAlign;
   subhead?: string;
 }
 
@@ -18,6 +22,12 @@ const ctaRowAlignClass = rowAlignClass;
 
 function ctaHidden(props: HeroProps): boolean {
   return props.cta_visible === false;
+}
+
+function vAlignClass(v?: VAlign): string {
+  if (v === 'top') return 'justify-start';
+  if (v === 'bottom') return 'justify-end';
+  return 'justify-center';
 }
 
 export function Hero({ section, ctx, props }: SectionComponentProps<HeroProps>) {
@@ -167,6 +177,9 @@ function Split({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: HeroP
 
 function Fullscreen({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: HeroProps }) {
   const { primary, background, dark } = ctx.colors;
+  const ctaBottom = props.cta_vertical === 'bottom';
+  const ctaTop = props.cta_vertical === 'top';
+  const contentV = props.content_vertical ?? 'middle';
   return (
     <section
       className="relative overflow-hidden px-6 py-24 md:py-32 text-center"
@@ -193,28 +206,44 @@ function Fullscreen({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: 
           background: `linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.6) 100%)`,
         }}
       />
-      <div className="relative z-10 max-w-2xl mx-auto space-y-5">
-        <Lockup ctx={ctx} />
-        {ctx.tagline && (
-          <p className="text-lg opacity-95 max-w-xl mx-auto leading-relaxed">
-            {ctx.tagline}
-          </p>
-        )}
-        {props.subhead && (
-          <p className="text-sm opacity-80 max-w-lg mx-auto">{props.subhead}</p>
-        )}
-        {!ctaHidden(props) && (
-          <div className={`flex mt-2 ${ctaRowAlignClass(props.cta_align)}`}>
-            <a
-              href={props.cta_href ?? '/menu'}
-              className={`inline-block rounded-full font-medium ${ctaSizeClass(props.cta_size ?? 'lg')}`}
-              style={{ background, color: primary }}
-            >
-              {props.cta_label ?? 'Lihat Menu →'}
-            </a>
-          </div>
-        )}
+      <div className={`absolute inset-0 flex flex-col ${vAlignClass(contentV)} px-6`}>
+        <div className="relative z-10 max-w-2xl mx-auto space-y-5 w-full">
+          <Lockup ctx={ctx} />
+          {ctx.tagline && (
+            <p className="text-lg opacity-95 max-w-xl mx-auto leading-relaxed">
+              {ctx.tagline}
+            </p>
+          )}
+          {props.subhead && (
+            <p className="text-sm opacity-80 max-w-lg mx-auto">{props.subhead}</p>
+          )}
+          {!ctaHidden(props) && !ctaBottom && !ctaTop && (
+            <div className={`flex mt-2 ${ctaRowAlignClass(props.cta_align)}`}>
+              <a
+                href={props.cta_href ?? '/menu'}
+                className={`inline-block rounded-full font-medium ${ctaSizeClass(props.cta_size ?? 'lg')}`}
+                style={{ background, color: primary }}
+              >
+                {props.cta_label ?? 'Lihat Menu →'}
+              </a>
+            </div>
+          )}
+        </div>
       </div>
+      {!ctaHidden(props) && (ctaBottom || ctaTop) && (
+        <div
+          className={`absolute inset-x-0 z-10 flex px-6 ${ctaRowAlignClass(props.cta_align)}`}
+          style={ctaBottom ? { bottom: 32 } : { top: 32 }}
+        >
+          <a
+            href={props.cta_href ?? '/menu'}
+            className={`inline-block rounded-full font-medium ${ctaSizeClass(props.cta_size ?? 'lg')}`}
+            style={{ background, color: primary }}
+          >
+            {props.cta_label ?? 'Lihat Menu →'}
+          </a>
+        </div>
+      )}
     </section>
   );
 }

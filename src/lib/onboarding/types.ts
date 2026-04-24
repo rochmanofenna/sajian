@@ -49,7 +49,8 @@ export type SectionType =
   | 'testimonials'
   | 'social'
   | 'location'
-  | 'announcement';
+  | 'announcement'
+  | 'canvas';
 
 export interface StorefrontSection {
   id: string;
