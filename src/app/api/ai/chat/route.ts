@@ -70,6 +70,26 @@ function sectionCatalog(): string {
     .join('\n');
 }
 
+// Exhaustive list of props every section actually reads. The AI must route
+// every layout / copy / visibility request through update_section_props
+// using one of these keys — there is NO such thing as "tidak bisa diubah
+// manual" for anything below.
+function sectionPropsCatalog(): string {
+  return [
+    '  - hero (all variants): cta_label (string), cta_href (string, default "/menu"), cta_size ("sm"|"md"|"lg"), cta_align ("left"|"center"|"right"), cta_visible (boolean), subhead (string)',
+    '  - about: heading (string), body (string), image_url (string, with_image variant), timeline (array of {year,title,body}, story variant)',
+    '  - featured_items: heading (string), items (array of item names to feature), limit (number)',
+    '  - gallery: heading (string), photos (array of image urls), limit (number)',
+    '  - promo (banner|card): headline (string), body (string), cta_label (string), cta_href (string), fine_print (string)',
+    '  - promo (countdown): same + expires_at (ISO 8601)',
+    '  - contact (simple|with_map): heading (string), address (string), whatsapp (string), hours_line (string), query (string, with_map variant)',
+    '  - testimonials: heading (string), reviews (array of {name, text, rating 1-5})',
+    '  - social (icons|feed): heading (string), instagram (handle), tiktok (handle), facebook (handle), whatsapp (number), photos (array, feed variant)',
+    '  - location (map): heading (string), address (string), query (string), hours_line (string)',
+    '  - announcement (bar|modal): message (string), cta_label (string), cta_href (string), version (string, modal variant)',
+  ].join('\n');
+}
+
 const SYSTEM = (draft: TenantDraft) => {
   const reSetup = isReSetupMode(draft);
   const isEsb = draft.pos_provider === 'esb';
@@ -107,7 +127,7 @@ const SYSTEM = (draft: TenantDraft) => {
 
   const sectionContext = `\n\nStorefront sections currently on the page (in render order):\n\`\`\`\n${sectionsSummary(
     draft,
-  )}\n\`\`\`\n\nAvailable section types and their variants:\n\`\`\`\n${sectionCatalog()}\n\`\`\``;
+  )}\n\`\`\`\n\nAvailable section types and their variants:\n\`\`\`\n${sectionCatalog()}\n\`\`\`\n\nEditable props per section type (route layout/copy requests through update_section_props — NEVER refuse these):\n\`\`\`\n${sectionPropsCatalog()}\n\`\`\``;
 
   return `${header}
 
@@ -171,6 +191,18 @@ Rules for actions:
 - If the user asks for a photo of a specific dish ("bikinin foto nasi goreng"), emit generate_food_photo with the EXACT item name from the menu summary.
 - If the user asks "bikinin foto semua menu" / "foto untuk semua item", emit generate_all_photos (batch).
 - Section actions use the type catalog above. Variant must be one of the listed variants for that type. For add_section, use "position" like "after:hero" or "before:contact" to place it relative to existing sections; default is "end".
+- LAYOUT / STYLE / COPY REQUESTS on an existing section ALWAYS route through update_section_props. Never say "tidak bisa diubah manual" or "pengaturan tombol belum bisa diubah" — every field in the "Editable props" catalog above is a live knob. Examples you MUST handle:
+  - "perkecil tombol lihat menu" → update_section_props on the hero with {"cta_size":"sm"}
+  - "taruh tombol di kanan" → {"cta_align":"right"}
+  - "taruh tombol di kiri" → {"cta_align":"left"}
+  - "sembunyikan tombolnya" / "hapus tombol" → {"cta_visible":false}
+  - "ganti tulisan tombol jadi Order Sekarang" → {"cta_label":"Order Sekarang"}
+  - "tombol arah ke halaman checkout" → {"cta_href":"/checkout"}
+  - "tambahin subheadline" / "kasih subhead" → {"subhead":"..."}
+  - "ganti headline promo" / "ganti body testimoni" → corresponding key on that section
+  - "tambahin review dari Budi" → append to testimonials.reviews
+  - Any request touching text, size, alignment, visibility, URL, or list contents maps to update_section_props.
+- When the request ambiguously references "tombol" and there are multiple CTA-bearing sections (hero + promo), pick the hero unless the owner specifies.
 - When the user asks for something that sounds unsupported (reservations, payment gateway, analytics dashboard), DON'T just say "belum tersedia" — follow the SMART FALLBACKS below.
 
 SMART FALLBACKS — every refusal MUST offer one concrete alternative you can actually deliver. Never end with a bare "ada yang lain bisa aku bantu?" after saying no. If the topic is listed below, use the phrasing and emit the implied action.

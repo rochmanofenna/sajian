@@ -6,7 +6,32 @@ import type { SectionComponentProps } from '@/lib/storefront/section-types';
 interface HeroProps {
   cta_label?: string;
   cta_href?: string;
+  cta_size?: 'sm' | 'md' | 'lg';
+  cta_align?: 'left' | 'center' | 'right';
+  cta_visible?: boolean;
   subhead?: string;
+}
+
+function ctaSizeClass(size?: 'sm' | 'md' | 'lg'): string {
+  switch (size) {
+    case 'sm':
+      return 'px-4 h-9 leading-[36px] text-xs';
+    case 'lg':
+      return 'px-7 h-12 leading-[48px] text-base';
+    case 'md':
+    default:
+      return 'px-6 h-11 leading-[44px] text-sm';
+  }
+}
+
+function ctaRowAlignClass(align?: 'left' | 'center' | 'right'): string {
+  if (align === 'left') return 'justify-start';
+  if (align === 'right') return 'justify-end';
+  return 'justify-center';
+}
+
+function ctaHidden(props: HeroProps): boolean {
+  return props.cta_visible === false;
 }
 
 export function Hero({ section, ctx, props }: SectionComponentProps<HeroProps>) {
@@ -72,13 +97,17 @@ function Gradient({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: He
         <Lockup ctx={ctx} />
         {ctx.tagline && <p className="text-base opacity-85 max-w-md mx-auto">{ctx.tagline}</p>}
         {props.subhead && <p className="text-sm opacity-70 max-w-md mx-auto">{props.subhead}</p>}
-        <a
-          href={props.cta_href ?? '/menu'}
-          className="inline-block mt-3 px-6 h-11 leading-[44px] rounded-full font-medium"
-          style={{ background, color: primary }}
-        >
-          {props.cta_label ?? 'Lihat Menu →'}
-        </a>
+        {!ctaHidden(props) && (
+          <div className={`flex mt-3 ${ctaRowAlignClass(props.cta_align)}`}>
+            <a
+              href={props.cta_href ?? '/menu'}
+              className={`inline-block rounded-full font-medium ${ctaSizeClass(props.cta_size)}`}
+              style={{ background, color: primary }}
+            >
+              {props.cta_label ?? 'Lihat Menu →'}
+            </a>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -91,13 +120,17 @@ function Minimal({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Her
       <div className="space-y-3">
         <Lockup ctx={ctx} />
         {ctx.tagline && <p className="text-sm opacity-70 max-w-sm mx-auto">{ctx.tagline}</p>}
-        <a
-          href={props.cta_href ?? '/menu'}
-          className="inline-block mt-2 px-6 h-10 leading-[40px] rounded-full text-sm font-medium text-white"
-          style={{ background: primary }}
-        >
-          {props.cta_label ?? 'Lihat Menu'}
-        </a>
+        {!ctaHidden(props) && (
+          <div className={`flex mt-2 ${ctaRowAlignClass(props.cta_align)}`}>
+            <a
+              href={props.cta_href ?? '/menu'}
+              className={`inline-block rounded-full font-medium text-white ${ctaSizeClass(props.cta_size)}`}
+              style={{ background: primary }}
+            >
+              {props.cta_label ?? 'Lihat Menu'}
+            </a>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -112,13 +145,17 @@ function Split({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: HeroP
           <Lockup ctx={ctx} align="left" />
           {ctx.tagline && <p className="text-base opacity-80">{ctx.tagline}</p>}
           {props.subhead && <p className="text-sm opacity-60">{props.subhead}</p>}
-          <a
-            href={props.cta_href ?? '/menu'}
-            className="inline-block px-5 h-11 leading-[44px] rounded-full text-sm font-medium text-white"
-            style={{ background: primary }}
-          >
-            {props.cta_label ?? 'Lihat Menu →'}
-          </a>
+          {!ctaHidden(props) && (
+            <div className={`flex ${ctaRowAlignClass(props.cta_align ?? 'left')}`}>
+              <a
+                href={props.cta_href ?? '/menu'}
+                className={`inline-block rounded-full font-medium text-white ${ctaSizeClass(props.cta_size)}`}
+                style={{ background: primary }}
+              >
+                {props.cta_label ?? 'Lihat Menu →'}
+              </a>
+            </div>
+          )}
         </div>
         <div
           className="aspect-[4/3] rounded-3xl overflow-hidden"
@@ -180,13 +217,17 @@ function Fullscreen({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: 
         {props.subhead && (
           <p className="text-sm opacity-80 max-w-lg mx-auto">{props.subhead}</p>
         )}
-        <a
-          href={props.cta_href ?? '/menu'}
-          className="inline-block mt-2 px-7 h-12 leading-[48px] rounded-full font-medium"
-          style={{ background, color: primary }}
-        >
-          {props.cta_label ?? 'Lihat Menu →'}
-        </a>
+        {!ctaHidden(props) && (
+          <div className={`flex mt-2 ${ctaRowAlignClass(props.cta_align)}`}>
+            <a
+              href={props.cta_href ?? '/menu'}
+              className={`inline-block rounded-full font-medium ${ctaSizeClass(props.cta_size ?? 'lg')}`}
+              style={{ background, color: primary }}
+            >
+              {props.cta_label ?? 'Lihat Menu →'}
+            </a>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -216,14 +257,22 @@ function Editorial({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: H
                 {ctx.tagline}
               </p>
             )}
-            <div className="flex items-center gap-4">
-              <a
-                href={props.cta_href ?? '/menu'}
-                className="inline-block px-6 h-11 leading-[44px] rounded-full text-sm font-medium text-white"
-                style={{ background: primary }}
-              >
-                {props.cta_label ?? 'Lihat Menu'}
-              </a>
+            <div
+              className={`flex items-center gap-4 ${ctaRowAlignClass(
+                props.cta_align ?? 'left',
+              )}`}
+            >
+              {!ctaHidden(props) && (
+                <a
+                  href={props.cta_href ?? '/menu'}
+                  className={`inline-block rounded-full font-medium text-white ${ctaSizeClass(
+                    props.cta_size,
+                  )}`}
+                  style={{ background: primary }}
+                >
+                  {props.cta_label ?? 'Lihat Menu'}
+                </a>
+              )}
               {ctx.logoUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
