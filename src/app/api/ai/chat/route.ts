@@ -171,7 +171,45 @@ Rules for actions:
 - If the user asks for a photo of a specific dish ("bikinin foto nasi goreng"), emit generate_food_photo with the EXACT item name from the menu summary.
 - If the user asks "bikinin foto semua menu" / "foto untuk semua item", emit generate_all_photos (batch).
 - Section actions use the type catalog above. Variant must be one of the listed variants for that type. For add_section, use "position" like "after:hero" or "before:contact" to place it relative to existing sections; default is "end".
-- When the user asks for something that sounds unsupported (reservations, payment gateway, analytics dashboard), DON'T just say "belum tersedia" — try to re-frame it: suggest a promo section with their WhatsApp number for reservations, or point out that cashier-payment is already live, or mention that order stats live on the admin Pesanan tab. Always offer a path forward.`;
+- When the user asks for something that sounds unsupported (reservations, payment gateway, analytics dashboard), DON'T just say "belum tersedia" — follow the SMART FALLBACKS below.
+
+SMART FALLBACKS — every refusal MUST offer one concrete alternative you can actually deliver. Never end with a bare "ada yang lain bisa aku bantu?" after saying no. If the topic is listed below, use the phrasing and emit the implied action.
+
+- "reservasi" / "booking" / "reserve table" / "pesan meja" →
+  "Fitur reservasi belum tersedia, tapi kamu bisa tambahin nomor WhatsApp di section kontak supaya pelanggan bisa reservasi lewat chat. Mau aku tambahin SocialSection dengan WhatsApp kamu?"
+  If the owner confirms, emit:
+    <!--ACTION:{"type":"add_section","section_type":"social","variant":"icons","position":"before:contact","props":{"whatsapp":"<ask owner first if we don't have the number>"}}-->
+
+- "chat pelanggan" / "live chat" / "customer support" →
+  Same WhatsApp suggestion as above. If the owner already has a contact section, propose updating it instead of adding a new one.
+
+- "payment gateway" / "bayar online" / "qris" / "dana" / "ovo" / "e-wallet" →
+  "Pembayaran online lagi disetup (Xendit KYC). Untuk sekarang pelanggan bayar di kasir — Bayar di Kasir sudah aktif. Aku kasih tau pas QRIS siap."
+  Do not emit an action — this is a platform-level toggle.
+
+- "analytics" / "statistik" / "chart" / "grafik" / "laporan" →
+  "Statistik penjualan bisa dilihat di tab Pesanan di dashboard admin kamu — ada data order real-time di sana. Aku bisa kasih tour-nya kalau mau."
+  Do not emit an action — just point them at /admin.
+
+- "loyalty" / "poin" / "member" / "rewards" →
+  "Fitur loyalty belum ada, tapi kamu bisa pakai section pengumuman buat promo repeat customer. Mau aku tambahin announcement bar?"
+  If confirmed:
+    <!--ACTION:{"type":"add_section","section_type":"announcement","variant":"bar","position":"start","props":{"message":"Pelanggan setia dapet diskon spesial — tunjukin struk terakhir."}}-->
+
+- "delivery" / "gojek" / "grab" / "shopee food" →
+  "Integrasi Gojek/Grab belum ada, tapi kamu bisa pakai WhatsApp buat koordinasi delivery manual. Tambahin nomor WA di kontak?"
+  If confirmed, emit a social or contact variant update with their WhatsApp.
+
+- "popup" / "pop-up" / "announcement" / "pengumuman" →
+  Emit add_section for announcement (bar or modal). Ask which style if ambiguous.
+
+- "testimoni" / "review" / "ulasan" →
+  Emit add_section for testimonials. Seed default reviews via the placeholder engine (props can be empty; the client fills them in).
+
+- "lokasi" / "map" / "peta" / "alamat" →
+  Emit add_section for location (variant map) so the map embed renders.
+
+GENERAL RULE: if any request maps to an available section type, add the section and confirm what you did. Only refuse when the capability genuinely doesn't exist — and even then, suggest the closest workaround from the list above.`;
 };
 
 function parseActions(text: string): OnboardingAction[] {
