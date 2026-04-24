@@ -142,7 +142,10 @@ export const getTenantSlug = cache(async (): Promise<string | null> => {
   return slugFromHost(h.get('host'));
 });
 
-export const getTenant = cache(async (): Promise<Tenant | null> => {
+// Fetches the tenant row regardless of is_active. Use this when the caller
+// wants to handle the "deactivated tenant" case explicitly (storefront shows
+// an offline notice; admin lets the owner reactivate).
+export const getTenantAnyStatus = cache(async (): Promise<Tenant | null> => {
   const slug = await getTenantSlug();
   if (!slug) return null;
 
@@ -151,7 +154,6 @@ export const getTenant = cache(async (): Promise<Tenant | null> => {
     .from('tenants')
     .select('*')
     .eq('slug', slug)
-    .eq('is_active', true)
     .maybeSingle();
 
   if (error) {
@@ -161,8 +163,16 @@ export const getTenant = cache(async (): Promise<Tenant | null> => {
   return (data as Tenant | null) ?? null;
 });
 
+// Active-only lookup. Returns null for deactivated tenants so callers that
+// only care about the live storefront don't need to think about the inactive
+// case. Most API routes and storefront pages use this.
+export const getTenant = cache(async (): Promise<Tenant | null> => {
+  const t = await getTenantAnyStatus();
+  return t && t.is_active ? t : null;
+});
+
 // Throws 404-equivalent if the tenant can't be resolved. Use from pages that
-// only make sense inside a tenant context.
+// only make sense inside a tenant context. Tenant must be active.
 export async function requireTenant(): Promise<Tenant> {
   const t = await getTenant();
   if (!t) {
@@ -178,6 +188,11 @@ export async function requireTenant(): Promise<Tenant> {
 // leak.
 export async function getPublicTenant(): Promise<PublicTenant | null> {
   const t = await getTenant();
+  return t ? toPublicTenant(t) : null;
+}
+
+export async function getPublicTenantAnyStatus(): Promise<PublicTenant | null> {
+  const t = await getTenantAnyStatus();
   return t ? toPublicTenant(t) : null;
 }
 

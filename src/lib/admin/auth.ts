@@ -9,7 +9,7 @@
 
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
-import { getTenant, type Tenant } from '@/lib/tenant';
+import { getTenantAnyStatus, type Tenant } from '@/lib/tenant';
 
 export interface AdminSession {
   userId: string;
@@ -17,8 +17,12 @@ export interface AdminSession {
   tenant: Tenant;
 }
 
+// Resolve the tenant regardless of is_active so the owner of a deactivated
+// store can still log in and reactivate it. The admin page surfaces the
+// inactive state visibly; other admin APIs should block writes when inactive
+// by checking `session.tenant.is_active` themselves.
 export async function getOwnerOrNull(): Promise<AdminSession | null> {
-  const tenant = await getTenant();
+  const tenant = await getTenantAnyStatus();
   if (!tenant) return null;
 
   const sb = await createServerClient();

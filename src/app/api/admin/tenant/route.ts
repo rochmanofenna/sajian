@@ -9,6 +9,7 @@
 // already owner-gated.
 
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requireOwnerOrThrow } from '@/lib/admin/auth';
 import { errorResponse, badRequest } from '@/lib/api/errors';
@@ -39,6 +40,9 @@ const patchSchema = z
     colors: colorsSchema.optional(),
     operating_hours: z.record(z.string(), hoursDaySchema).nullable().optional(),
     theme_template: z.enum(THEME_TEMPLATES as [string, ...string[]]).optional(),
+    // Owners can toggle their store on/off from the inactive panel. Soft-
+    // delete still lives at /api/admin/tenant/deactivate.
+    is_active: z.boolean().optional(),
   })
   .strict();
 
@@ -75,6 +79,12 @@ export async function PATCH(req: Request) {
       .select('*')
       .single();
     if (error) throw new Error(error.message);
+
+    // Tenant data fans out across the storefront SSR + admin shell + iframe
+    // preview. Invalidating the layout is a big hammer but it's the only way
+    // to guarantee a fresh render for the customer after the owner changes
+    // colors/name/hours. Costs are negligible at our traffic.
+    revalidatePath('/', 'layout');
 
     return NextResponse.json({ tenant: data });
   } catch (err) {

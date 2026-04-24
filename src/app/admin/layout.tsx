@@ -1,12 +1,13 @@
 // Admin dashboard layout. Wraps every owner route in a shell with the
 // tenant's brand strip. Auth + owner gating happens in the page component
 // because layout rendering runs before the page-level redirect chain and
-// we want to share the shell with the login screen.
+// we want to share the shell with the login screen. Deactivated tenants
+// still render the shell — the page shows the owner a reactivate prompt.
 
-import { getPublicTenant } from '@/lib/tenant';
+import { getPublicTenantAnyStatus } from '@/lib/tenant';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const tenant = await getPublicTenant();
+  const tenant = await getPublicTenantAnyStatus();
 
   if (!tenant) {
     return (
@@ -35,7 +36,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               style={{ background: tenant.colors.primary }}
             />
             <span className="font-semibold">{tenant.name}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">Dashboard</span>
+            <span
+              className="text-xs px-2 py-0.5 rounded-full"
+              style={
+                tenant.is_active
+                  ? { background: '#f4f4f5', color: '#52525b' }
+                  : { background: '#fef2f2', color: '#dc2626' }
+              }
+            >
+              {tenant.is_active ? 'Dashboard' : 'Offline'}
+            </span>
           </div>
           <span className="text-xs text-zinc-500 capitalize">{tenant.subscription_tier}</span>
         </div>
