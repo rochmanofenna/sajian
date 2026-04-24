@@ -15,9 +15,11 @@ import { errorResponse, badRequest } from '@/lib/api/errors';
 import { createServiceClient } from '@/lib/supabase/service';
 
 const messageSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().min(1).max(128),
   role: z.enum(['user', 'assistant']),
-  content: z.string(),
+  // Cap single-message content so a misbehaving client can't write a 5MB
+  // blob into the owner's transcript and break subsequent reads.
+  content: z.string().max(12_000),
   kind: z.enum(['text', 'error']).optional(),
 });
 

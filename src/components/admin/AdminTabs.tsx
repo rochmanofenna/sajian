@@ -34,7 +34,16 @@ export function AdminTabs({ tenant, active }: { tenant: PublicTenant; active: Ad
   async function logout() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    window.location.reload();
+    // Send the owner back to the apex so they don't bounce through the
+    // inline login of the same tenant. The tenant's own /admin would just
+    // re-render OwnerLogin immediately otherwise.
+    const host = window.location.host;
+    if (host.includes('localhost')) {
+      const port = window.location.port || '3000';
+      window.location.href = `http://localhost:${port}/`;
+    } else {
+      window.location.href = 'https://sajian.app/';
+    }
   }
 
   function switchTab(tab: AdminTab) {

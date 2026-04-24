@@ -5,6 +5,10 @@
 // the CDN cache when owner replaces the image; we don't prune the old file
 // (cheap to keep, housekeeping can sweep later).
 //
+// All uploads run through a shared Sharp pipeline: auto-rotate, resize to
+// 800px max edge, strip EXIF, re-encode to JPEG at quality 82. A 5MB phone
+// photo becomes ~120KB before we ever touch Supabase.
+//
 // DELETE /api/admin/menu/[id]/image — clear image_url (the Storage object
 // itself is left in place; see above).
 
@@ -12,8 +16,11 @@ import { NextResponse } from 'next/server';
 import { requireOwnerOrThrow } from '@/lib/admin/auth';
 import { errorResponse, badRequest } from '@/lib/api/errors';
 import { createServiceClient } from '@/lib/supabase/service';
+import { processUpload } from '@/lib/onboarding/image-pipeline';
 
-const MAX_BYTES = 3 * 1024 * 1024; // 3MB — menu thumbnails don't need more.
+// Upstream cap — after Sharp the output is tiny, but we reject huge uploads
+// at the boundary so we never shovel a 50MB file into memory.
+const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export async function POST(
@@ -33,8 +40,8 @@ export async function POST(
     const form = await req.formData();
     const file = form.get('photo');
     if (!(file instanceof File)) return badRequest('photo field required');
-    if (!ALLOWED.has(file.type)) return badRequest('photo must be jpeg, png, or webp');
-    if (file.size > MAX_BYTES) return badRequest('photo must be < 3MB');
+    if (!ALLOWED.has(file.type)) return badRequest('Foto harus JPEG, PNG, atau WebP.');
+    if (file.size > MAX_INPUT_BYTES) return badRequest('Foto terlalu besar (maks 8MB).');
 
     const supabase = createServiceClient();
 
@@ -47,13 +54,15 @@ export async function POST(
       .maybeSingle();
     if (!item) return badRequest('Item tidak ditemukan');
 
-    const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
-    const path = `menu/${tenant.id}/${id}-${Date.now()}.${ext}`;
+    const processed = await processUpload(file, { maxEdge: 800, format: 'jpeg' });
+    const path = `menu/${tenant.id}/${id}-${Date.now()}.${processed.ext}`;
 
-    const buf = Buffer.from(await file.arrayBuffer());
     const { error: upErr } = await supabase.storage
       .from('assets')
-      .upload(path, buf, { contentType: file.type, upsert: true });
+      .upload(path, processed.buffer, {
+        contentType: processed.contentType,
+        upsert: true,
+      });
     if (upErr) throw new Error(upErr.message);
 
     const { data: pub } = supabase.storage.from('assets').getPublicUrl(path);

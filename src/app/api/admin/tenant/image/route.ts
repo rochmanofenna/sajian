@@ -5,14 +5,19 @@
 // Storage path:
 //   tenants/{tenantId}/logo-{ts}.{ext}
 //   tenants/{tenantId}/hero-{ts}.{ext}
+// Uploads run through Sharp to right-size them before they reach Supabase:
+// logos fit inside 512px, heroes inside 1600px, EXIF stripped, re-encoded
+// to JPEG at quality 82. SVGs pass through unchanged (already vector).
 // Old files are left in place (housekeeping swept later).
 
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { requireOwnerOrThrow } from '@/lib/admin/auth';
 import { errorResponse, badRequest } from '@/lib/api/errors';
 import { createServiceClient } from '@/lib/supabase/service';
+import { processUpload } from '@/lib/onboarding/image-pipeline';
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml']);
 
 type Kind = 'logo' | 'hero';
@@ -27,11 +32,8 @@ function columnFor(kind: Kind): 'logo_url' | 'hero_image_url' {
   return kind === 'logo' ? 'logo_url' : 'hero_image_url';
 }
 
-function extFor(mime: string): string {
-  if (mime === 'image/png') return 'png';
-  if (mime === 'image/webp') return 'webp';
-  if (mime === 'image/svg+xml') return 'svg';
-  return 'jpg';
+function maxEdgeFor(kind: Kind): number {
+  return kind === 'logo' ? 512 : 1600;
 }
 
 export async function POST(req: Request) {
@@ -43,16 +45,22 @@ export async function POST(req: Request) {
     const form = await req.formData();
     const file = form.get('photo');
     if (!(file instanceof File)) return badRequest('photo field required');
-    if (!ALLOWED.has(file.type)) return badRequest('photo must be jpeg/png/webp/svg');
-    if (file.size > MAX_BYTES) return badRequest('photo must be < 5MB');
+    if (!ALLOWED.has(file.type)) return badRequest('Foto harus JPEG, PNG, WebP, atau SVG.');
+    if (file.size > MAX_INPUT_BYTES) return badRequest('Foto terlalu besar (maks 8MB).');
 
-    const path = `tenants/${tenant.id}/${kind}-${Date.now()}.${extFor(file.type)}`;
+    const processed = await processUpload(file, {
+      maxEdge: maxEdgeFor(kind),
+      format: 'jpeg',
+    });
+    const path = `tenants/${tenant.id}/${kind}-${Date.now()}.${processed.ext}`;
+
     const supabase = createServiceClient();
-
-    const buf = Buffer.from(await file.arrayBuffer());
     const { error: upErr } = await supabase.storage
       .from('assets')
-      .upload(path, buf, { contentType: file.type, upsert: true });
+      .upload(path, processed.buffer, {
+        contentType: processed.contentType,
+        upsert: true,
+      });
     if (upErr) throw new Error(upErr.message);
 
     const { data: pub } = supabase.storage.from('assets').getPublicUrl(path);
@@ -66,6 +74,8 @@ export async function POST(req: Request) {
       .select('*')
       .single();
     if (error) throw new Error(error.message);
+
+    revalidatePath('/', 'layout');
 
     return NextResponse.json({ tenant: data, url });
   } catch (err) {
@@ -88,6 +98,9 @@ export async function DELETE(req: Request) {
       .select('*')
       .single();
     if (error) throw new Error(error.message);
+
+    revalidatePath('/', 'layout');
+
     return NextResponse.json({ tenant: data });
   } catch (err) {
     return errorResponse(err);
