@@ -45,6 +45,13 @@ export const submitOrderSchema = z.object({
   deliveryAddress: z.string().optional().nullable(),
   customerName: z.string().min(1),
   customerPhone: z.string().min(6),
+  customerEmail: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   items: z.array(cartItemSchema).min(1),
   customerNotes: z.string().optional().nullable(),
 });

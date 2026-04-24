@@ -23,6 +23,7 @@ import { ESBClient, visitPurposeFor } from '@/lib/esb/client';
 import type { ESBBranchSettings } from '@/lib/esb/types';
 import { sendWhatsApp } from '@/lib/notify/whatsapp';
 import { channelFor, checkoutUrl, createEWalletCharge, createQRIS } from '@/lib/payments/xendit';
+import { getCustomerSession } from '@/lib/auth/customer-session';
 
 interface ESBCashierEnvelope {
   data?: { orderID?: string; qrData?: string; queueNum?: string };
@@ -49,18 +50,67 @@ export async function POST(req: Request) {
       return sum + (item.price + mods) * item.quantity;
     }, 0);
 
-    const { data: customer } = await supabase
-      .from('customers')
-      .upsert(
-        {
-          tenant_id: tenant.id,
-          phone: body.customerPhone,
-          name: body.customerName,
-        },
-        { onConflict: 'tenant_id,phone' },
-      )
-      .select('id')
-      .single();
+    // ── Resolve customer linkage ──────────────────────────────────────────
+    // Signed-in flow: find the customer_accounts row + upsert the per-tenant
+    // customers junction (carrying customer_account_id). Guest flow: keep
+    // the legacy phone-based upsert + stash contact info onto the order's
+    // guest_contact jsonb so the confirmation page can offer signup.
+    const session = await getCustomerSession(tenant);
+    const guestEmail = body.customerEmail ?? null;
+    let customerId: string | null = null;
+    let guestContact: { name: string; phone: string; email: string | null } | null = null;
+
+    if (session) {
+      const { data: row } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('tenant_id', tenant.id)
+        .eq('customer_account_id', session.account.id)
+        .maybeSingle();
+      if (row?.id) {
+        customerId = row.id as string;
+        await supabase
+          .from('customers')
+          .update({
+            name: body.customerName,
+            phone: body.customerPhone,
+            email: session.account.email,
+          })
+          .eq('id', customerId);
+      } else {
+        const { data: inserted, error: insertErr } = await supabase
+          .from('customers')
+          .insert({
+            tenant_id: tenant.id,
+            customer_account_id: session.account.id,
+            email: session.account.email,
+            phone: body.customerPhone,
+            name: body.customerName,
+          })
+          .select('id')
+          .single();
+        if (!insertErr && inserted) customerId = inserted.id as string;
+      }
+    } else {
+      const { data: row } = await supabase
+        .from('customers')
+        .upsert(
+          {
+            tenant_id: tenant.id,
+            phone: body.customerPhone,
+            name: body.customerName,
+          },
+          { onConflict: 'tenant_id,phone' },
+        )
+        .select('id')
+        .single();
+      if (row?.id) customerId = row.id as string;
+      guestContact = {
+        name: body.customerName,
+        phone: body.customerPhone,
+        email: guestEmail,
+      };
+    }
 
     const branchRow = await supabase
       .from('branches')
@@ -125,7 +175,7 @@ export async function POST(req: Request) {
         .insert({
           tenant_id: tenant.id,
           order_number: orderNumber ?? queueNum ?? esbOrderId,
-          customer_id: customer?.id,
+          customer_id: customerId,
           customer_name: body.customerName,
           customer_phone: body.customerPhone,
           items: body.items,
@@ -143,6 +193,7 @@ export async function POST(req: Request) {
           branch_code: body.branchCode,
           branch_name: branchRow.data?.name ?? body.branchCode,
           customer_notes: body.customerNotes ?? null,
+          guest_contact: guestContact,
         })
         .select('*')
         .single();
@@ -196,7 +247,7 @@ export async function POST(req: Request) {
       .insert({
         tenant_id: tenant.id,
         order_number: orderNumber ?? `N${Date.now().toString().slice(-6)}`,
-        customer_id: customer?.id,
+        customer_id: customerId,
         customer_name: body.customerName,
         customer_phone: body.customerPhone,
         items: body.items,
@@ -214,6 +265,7 @@ export async function POST(req: Request) {
         branch_code: body.branchCode,
         branch_name: branchRow.data?.name ?? body.branchCode,
         customer_notes: body.customerNotes ?? null,
+        guest_contact: guestContact,
       })
       .select('*')
       .single();

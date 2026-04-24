@@ -11,7 +11,7 @@
 //
 // Poll cadence is 3s while pending, pauses on 'paid'/'failed'/'expired'.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import QRCode from 'qrcode';
 import {
@@ -22,10 +22,12 @@ import {
   XCircle,
   Timer,
   ExternalLink,
+  UserPlus,
 } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
 import { formatCurrency } from '@/lib/utils';
 import { PageNav } from '@/components/chrome/PageNav';
+import { LoginDialog } from './auth/LoginDialog';
 
 interface OrderRow {
   id: string;
@@ -40,6 +42,11 @@ interface OrderRow {
   branch_name: string;
   items: Array<{ name: string; quantity: number; price: number }>;
   created_at: string;
+  guest_contact: { name?: string; phone?: string; email?: string | null } | null;
+}
+
+interface SessionShape {
+  account: { id: string; email: string };
 }
 
 export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: string }) {
@@ -47,6 +54,23 @@ export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: 
   const [error, setError] = useState<string | null>(null);
   const [qrSvg, setQrSvg] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [session, setSession] = useState<SessionShape | null>(null);
+  const [signupOpen, setSignupOpen] = useState(false);
+  const [signupDone, setSignupDone] = useState(false);
+
+  const refreshSession = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/customer/me', { cache: 'no-store' });
+      const body = await res.json();
+      setSession((body?.session as SessionShape | null) ?? null);
+    } catch {
+      setSession(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshSession();
+  }, [refreshSession]);
 
   // Poll the order — stops once we hit a terminal state.
   useEffect(() => {
@@ -335,6 +359,39 @@ export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: 
           <span className="font-medium text-zinc-700">{order.payment_status}</span>
         </div>
 
+        {!session && order.guest_contact?.email && !signupDone && (
+          <div
+            className="rounded-2xl border p-5 bg-white space-y-3"
+            style={{ borderColor: `${primary}25` }}
+          >
+            <div className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" style={{ color: primary }} />
+              <h3 className="font-semibold">Daftar dengan email ini</h3>
+            </div>
+            <p className="text-sm text-zinc-600">
+              Simpan pesanan & alamat biar next time tinggal tap. Cukup verifikasi kode ke{' '}
+              <span className="font-medium">{order.guest_contact.email}</span>.
+            </p>
+            <button
+              type="button"
+              onClick={() => setSignupOpen(true)}
+              className="inline-flex items-center gap-2 h-11 px-5 rounded-full text-white text-sm font-medium"
+              style={{ background: primary }}
+            >
+              Ya, daftar sekarang
+            </button>
+          </div>
+        )}
+
+        {signupDone && (
+          <div
+            className="rounded-2xl border p-4 text-sm text-center"
+            style={{ borderColor: `${primary}30`, background: `${primary}08`, color: tenant.colors.dark }}
+          >
+            Akun kamu siap. Pesanan ini udah nyambung ke profil.
+          </div>
+        )}
+
         <div className="pt-2 flex items-center justify-center gap-2">
           <Link
             href="/menu"
@@ -352,6 +409,22 @@ export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: 
           </Link>
         </div>
       </div>
+      <LoginDialog
+        tenant={tenant}
+        open={signupOpen}
+        onClose={() => setSignupOpen(false)}
+        initialEmail={order.guest_contact?.email ?? undefined}
+        onSuccess={async () => {
+          await refreshSession();
+          try {
+            await fetch('/api/customer/link-guest-orders', { method: 'POST' });
+          } catch {
+            // Non-fatal — the signup worked; linkage can be re-driven later
+            // from /akun/pesanan if needed.
+          }
+          setSignupDone(true);
+        }}
+      />
     </>
   );
 }

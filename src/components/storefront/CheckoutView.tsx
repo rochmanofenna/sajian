@@ -38,6 +38,10 @@ function methodsFor(posProvider: string): MethodDef[] {
   return METHODS;
 }
 
+interface SessionShape {
+  account: { id: string; email: string; name: string | null; phone: string | null };
+}
+
 export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
   const router = useRouter();
   const availableMethods = methodsFor(tenant.pos_provider);
@@ -53,8 +57,11 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
     clear,
   } = useCart();
 
+  const [session, setSession] = useState<SessionShape | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [notes, setNotes] = useState('');
   const [method, setMethod] = useState<PaymentMethod>(() => availableMethods[0]?.value ?? 'cashier');
   const [submitting, setSubmitting] = useState(false);
@@ -68,6 +75,32 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/customer/me', { cache: 'no-store' });
+        const body = await res.json();
+        if (cancelled) return;
+        const s = body?.session as SessionShape | null;
+        setSession(s);
+        if (s) {
+          if (s.account.name) setName(s.account.name);
+          if (s.account.phone) setPhone(s.account.phone);
+        }
+      } catch {
+        if (!cancelled) setSession(null);
+      } finally {
+        if (!cancelled) setSessionLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const emailValid = email.trim().length === 0 || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
   const subtotal = getSubtotal();
   const phoneDisplay = formatIdPhoneDisplay(phone);
   const phoneValid = isLikelyIdPhone(phone);
@@ -77,6 +110,8 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
     orderType &&
     name.trim().length >= 2 &&
     phoneValid &&
+    emailValid &&
+    sessionLoaded &&
     !submitting;
 
   const submit = async () => {
@@ -99,6 +134,7 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
           deliveryAddress: orderType === 'delivery' ? deliveryAddress : null,
           customerName: name.trim(),
           customerPhone: normalizeIdPhone(phone),
+          customerEmail: session ? undefined : email.trim() || undefined,
           items,
           customerNotes: notes.trim() || null,
         }),
@@ -142,6 +178,23 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
           Pembayaran
         </h1>
 
+        {session && (
+          <div
+            className="rounded-2xl border p-3 text-xs bg-white flex items-center gap-2"
+            style={{ borderColor: `${primary}22`, color: tenant.colors.dark }}
+          >
+            <span
+              className="h-6 w-6 rounded-full text-white flex items-center justify-center text-[11px]"
+              style={{ background: primary }}
+            >
+              {(session.account.name || session.account.email)[0].toUpperCase()}
+            </span>
+            <span className="truncate">
+              Masuk sebagai <span className="font-medium">{session.account.email}</span>
+            </span>
+          </div>
+        )}
+
         <div
           className="rounded-2xl border p-4 space-y-3 bg-white"
           style={{ borderColor: `${primary}18` }}
@@ -175,6 +228,26 @@ export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
                 ? phoneDisplay
                 : 'Masukkan nomor HP Indonesia (0812xxxxxxxx).'}
             </div>
+          )}
+
+          {!session && (
+            <>
+              <Label text="Email (opsional)" />
+              <input
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full h-12 px-4 rounded-full border border-zinc-200 bg-white focus:outline-none focus:border-zinc-400"
+                placeholder="nama@email.com"
+              />
+              <p className="text-xs text-zinc-500">
+                Isi untuk dapat update pesanan lewat email dan bisa daftar akun setelah bayar.
+              </p>
+              {email.trim().length > 0 && !emailValid && (
+                <p className="text-xs text-red-600">Masukkan email yang valid.</p>
+              )}
+            </>
           )}
 
           {orderType === 'dine_in' && (
