@@ -21,10 +21,14 @@ import { buildCsp, cspHeaderName } from '@/lib/security/csp';
 // framed by preview.sajian.app. Tenant subdomains are CSP-locked to
 // frame-ancestors 'none' — nobody should be able to embed a customer
 // storefront in a phishing frame.
-function cspContext(slug: string | null, host: string): 'app' | 'storefront' {
-  if (slug) return 'storefront';
-  // Apex (sajian.app) + localhost + www host the onboarding flow.
+function cspContext(slug: string | null, host: string): 'app' | 'storefront' | 'preview' {
+  // Preview origin wins over slug resolution — the slug parser returns
+  // 'preview' for preview.sajian.app, but we need distinct CSP rules
+  // so flag it explicitly here.
   const cleanHost = host.split(':')[0].toLowerCase();
+  if (cleanHost === 'preview.sajian.app') return 'preview';
+  if (slug === 'preview') return 'preview';
+  if (slug) return 'storefront';
   if (cleanHost === 'sajian.app' || cleanHost === 'www.sajian.app') return 'app';
   if (cleanHost === 'localhost' || cleanHost === '127.0.0.1') return 'app';
   if (cleanHost.endsWith('.vercel.app')) return 'app';

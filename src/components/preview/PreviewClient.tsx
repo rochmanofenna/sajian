@@ -17,6 +17,7 @@ import type { MenuItemDraft, TenantDraft } from '@/lib/onboarding/types';
 import { StorefrontRenderer } from '@/components/storefront/StorefrontRenderer';
 import type { SectionContext } from '@/lib/storefront/section-types';
 import { configuredAppOrigin } from '@/lib/security/preview-origin';
+import { CustomPreviewClient } from '@/components/preview/CustomPreviewClient';
 
 const PREVIEW_MSG_DRAFT = 'sajian:draft';
 const PREVIEW_MSG_READY = 'sajian:preview:ready';
@@ -93,11 +94,36 @@ export function PreviewClient({ initial }: { initial: TenantDraft }) {
   const hasSections = sections.length > 0;
 
   if (hasSections) {
+    const ctx = draftToContext(draft);
+    // Custom sections are compiled server-side (on publish or via
+    // /api/sections/compile). When the preview's relaxed CSP is
+    // active we render them client-side via new Function() on the
+    // compiled_code so the owner sees codegen output in the preview
+    // iframe. Sections with no fresh compile still fall through to
+    // the skip-rendering placeholder in StorefrontRenderer.
+    const customSections = sections
+      .filter((s) => s.type === 'custom')
+      .map((s) => {
+        const p = (s.props ?? {}) as Record<string, unknown>;
+        if (p.compile_status === 'ok' && typeof p.compiled_code === 'string') {
+          return { id: s.id, compiled_code: p.compiled_code };
+        }
+        return null;
+      })
+      .filter((x): x is { id: string; compiled_code: string } => x !== null);
+
     return (
       <div className="min-h-screen" style={{ background: colors.background, color: colors.dark }}>
         {/* StorefrontRenderer wraps each section in SectionErrorBoundary already,
             so a bad draft in preview isolates to the section that crashed. */}
-        <StorefrontRenderer sections={sections} ctx={draftToContext(draft)} />
+        <StorefrontRenderer sections={sections} ctx={ctx} />
+        {/* Custom sections ride alongside because the client-safe
+            renderer skips them. The iframe's relaxed CSP lets
+            new Function() evaluate the MDX-compiled function body
+            without bundling MDX into the client chunk. */}
+        {customSections.map((c) => (
+          <CustomPreviewClient key={c.id} compiledCode={c.compiled_code} ctx={ctx} />
+        ))}
       </div>
     );
   }

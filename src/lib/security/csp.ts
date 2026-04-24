@@ -10,7 +10,7 @@
 //     clean.
 //   • Violations land at POST /api/csp-report where they're logged.
 
-export type CspContext = 'storefront' | 'app';
+export type CspContext = 'storefront' | 'app' | 'preview';
 
 interface BuildOptions {
   context: CspContext;
@@ -70,10 +70,15 @@ export function buildCsp({ context, nonce, previewFrameOrigin }: BuildOptions): 
   // hash. Incompatible with explicit host allowlists (they become no-ops
   // when strict-dynamic is set) — that's a feature, it blocks any script
   // host we didn't nonce ourselves.
+  // Preview origin (preview.sajian.app) ships 'wasm-unsafe-eval' +
+  // 'unsafe-eval' so the owner-side custom-section renderer can compile
+  // JSX instantly via new Function(). This relaxation applies ONLY
+  // to preview — tenant storefronts and the onboarding app stay strict.
   const script = [
     "'self'",
     `'nonce-${nonce}'`,
     "'strict-dynamic'",
+    ...(context === 'preview' ? ["'wasm-unsafe-eval'", "'unsafe-eval'"] : []),
   ];
 
   // Style: Next's font loader + Tailwind runtime need inline styles for
