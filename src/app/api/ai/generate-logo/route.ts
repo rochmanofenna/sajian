@@ -41,14 +41,21 @@ function buildLogoPrompt(body: Body, styleHint: string): string {
   const colorLine = body.primaryColor
     ? `Use ${body.primaryColor} as the primary brand color.`
     : 'Pick a warm, earthy primary color that suits Indonesian F&B.';
-  const foodLine = body.foodType ? `Cuisine: ${body.foodType}.` : '';
-  return `Professional restaurant brand logo for "${body.name}". ${foodLine} ${colorLine}
+  const foodLine = body.foodType
+    ? `Cuisine / concept: ${body.foodType} (let it inspire the symbol).`
+    : '';
+  // Image models (DALL·E 3 included) garble text — "BURGGER", "BURGIGER",
+  // etc. Generate an ICON-ONLY mark and let the frontend render the
+  // restaurant name with real CSS typography next to it. This is how
+  // professional brands actually compose a lockup anyway.
+  return `Design a professional restaurant brand ICON for "${body.name}". ${foodLine} ${colorLine}
 Style: ${styleHint}.
-- Looks designed by a professional branding agency, NOT like clip art or stock imagery.
-- Works as an app icon at 32px AND a signage mark at 512px.
-- Clean background (solid or transparent-feel), centered composition.
-- Include the restaurant name "${body.name}" integrated tastefully — no slogans, no taglines, no "est." dates.
-- No text other than the restaurant name. No watermarks.`;
+- Icon-only symbol or monogram-free glyph — think a polished app-icon mark.
+- NO text, NO letters, NO words, NO numbers, NO typography of any kind. Absolutely none. If you would draw a word, draw the subject of that word instead.
+- No slogans, no taglines, no "est." dates, no watermarks, no signage strings.
+- Centered, crisp composition, clean background (solid color or subtle gradient).
+- Readable at 32px (app icon) and 512px (sign). Vector-clean silhouette.
+- Looks designed by a professional branding agency, NOT clip art, NOT AI-scraped stock imagery.`;
 }
 
 const STYLE_HINTS = [
