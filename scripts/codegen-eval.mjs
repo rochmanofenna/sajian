@@ -76,6 +76,18 @@ const PROMPTS = [
   'ganti font ke Poppins',
   'ganti heading ke Futura body ke Inter',
   'kombinasi Fraunces dengan Plus Jakarta Sans untuk heading dan body',
+  // Phase 5+ batch — settings surface closure (favicon, tax, social,
+  // delivery, payments, custom domain) + section-id reorder happy path.
+  'set favicon ke logo baru ini',
+  'set pajak 11% dan service charge 5%',
+  'tambahkan zone delivery Bintaro radius 3km ongkir 8rb',
+  'aktifkan QRIS dan VA BCA',
+  'hubungkan domain custom satetaichanuda.com',
+  'set ig dan tiktok kita @satetaichanuda',
+  'pindahkan testimoni ke paling bawah di atas kontak',
+  'tukar promo dan testimoni',
+  'hapus section gallery',
+  'balik urutan semua section',
 ];
 
 // The AI must never use these phrases. They were the "I can't do that"
@@ -110,6 +122,14 @@ const FORBIDDEN_PHRASES = [
   'ada perubahan lain yang bisa aku bantu sekarang',
   'ganti font belum bisa',
   'font belum bisa',
+  // Phase 5+ batch deflections (settings surface).
+  'level xendit',
+  'konfigurasi xendit',
+  'perlu setting di backend',
+  'domain butuh setup teknis',
+  'pajak diatur di sistem',
+  'ongkir hardcoded',
+  'ongkir di-set di backend',
   // Phase 5 hardening — codegen refusal regression patterns.
   'belum tersedia',
   'tidak tersedia',
@@ -166,10 +186,29 @@ async function askChat(prompt) {
   };
 }
 
+// Regex catches UUIDs + nanoid-style 16+-char base64 strings the AI
+// must NEVER paste into chat. Skips short identifiers (Indonesian
+// words can hit 12+ chars) and content URLs (which legitimately
+// carry hashes). Anything matching = the AI leaked an internal ID.
+const UUID_RE = /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/;
+const SHORT_ID_RE = /\b[A-Za-z0-9_-]{16,}\b/;
+
 function scanForbidden(text) {
   if (!text || typeof text !== 'string') return [];
+  const hits = [];
   const lower = text.toLowerCase();
-  return FORBIDDEN_PHRASES.filter((p) => lower.includes(p.toLowerCase()));
+  for (const p of FORBIDDEN_PHRASES) {
+    if (lower.includes(p.toLowerCase())) hits.push(p);
+  }
+  // ID-leak gate: ignore anything inside a fenced code block or URL,
+  // since those legitimately carry IDs.
+  const stripped = text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]*`/g, '')
+    .replace(/https?:\/\/\S+/g, '');
+  if (UUID_RE.test(stripped)) hits.push('LEAK:uuid');
+  if (SHORT_ID_RE.test(stripped)) hits.push('LEAK:short-id');
+  return hits;
 }
 
 async function dryCompile(sourceJsx) {
