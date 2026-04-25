@@ -15,6 +15,11 @@ import { requireOwnerOrThrow } from '@/lib/admin/auth';
 import { errorResponse, badRequest } from '@/lib/api/errors';
 import { createServiceClient } from '@/lib/supabase/service';
 import { THEME_TEMPLATES } from '@/lib/tenant';
+import {
+  TENANT_SETTINGS,
+  applySettingValue,
+  SettingValidationError,
+} from '@/lib/tenant-settings/registry';
 
 const colorsSchema = z
   .object({
@@ -31,6 +36,18 @@ const hoursDaySchema = z.object({
   closed: z.boolean().optional(),
 });
 
+// Build the registry-driven settings shape automatically. Each
+// SettingDefinition contributes a `<key>` accepted by PATCH; PATCH
+// then routes the value through applySettingValue() so transforms
+// (e.g. percent → bps) run before the column write.
+const settingsShape = TENANT_SETTINGS.reduce<Record<string, z.ZodTypeAny>>(
+  (acc, def) => {
+    acc[def.key] = def.schema.optional();
+    return acc;
+  },
+  {},
+);
+
 const patchSchema = z
   .object({
     name: z.string().min(1).max(240).optional(),
@@ -40,22 +57,7 @@ const patchSchema = z
     colors: colorsSchema.optional(),
     operating_hours: z.record(z.string(), hoursDaySchema).nullable().optional(),
     theme_template: z.enum(THEME_TEMPLATES as [string, ...string[]]).optional(),
-    // Owners can toggle their store on/off from the inactive panel. Soft-
-    // delete still lives at /api/admin/tenant/deactivate.
-    is_active: z.boolean().optional(),
-    // AI-editable settings (Phase 5 settings actions). Whitelisted
-    // here so update_tenant_setting can route through the same PATCH
-    // endpoint owners use from /admin → Store Settings.
-    multi_branch_mode: z.boolean().nullable().optional(),
-    currency_symbol: z.string().min(1).max(8).optional(),
-    locale: z.string().min(2).max(16).optional(),
-    support_whatsapp: z.string().max(32).nullable().optional(),
-    contact_email: z.string().email().max(240).nullable().optional(),
-    // Typography. Null reverts to the template default. The font name
-    // must match a Google Fonts family — the storefront layout loads
-    // it dynamically via the Google Fonts CSS endpoint.
-    heading_font_family: z.string().trim().min(1).max(80).nullable().optional(),
-    body_font_family: z.string().trim().min(1).max(80).nullable().optional(),
+    ...settingsShape,
   })
   .strict();
 
@@ -77,9 +79,30 @@ export async function PATCH(req: Request) {
       return badRequest(parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
     }
 
-    const patch: Record<string, unknown> = { ...parsed.data };
-    // Merge colors rather than overwrite, so the client can send only the
-    // fields it wants to change.
+    // Build the storage patch by hand so registry-driven keys go
+    // through applySettingValue (which maps key→column + applies the
+    // transform). Non-registry fields (name/tagline/logo/colors/etc)
+    // pass through unchanged.
+    const patch: Record<string, unknown> = {};
+    const registryKeys = new Set(TENANT_SETTINGS.map((d) => d.key));
+    for (const [k, v] of Object.entries(parsed.data)) {
+      if (v === undefined) continue;
+      if (registryKeys.has(k)) {
+        try {
+          const { column, value } = applySettingValue(k, v);
+          patch[column] = value;
+        } catch (err) {
+          if (err instanceof SettingValidationError) {
+            return badRequest(`${k}: ${err.detail ?? err.reason}`);
+          }
+          throw err;
+        }
+      } else {
+        patch[k] = v;
+      }
+    }
+    // Merge colors rather than overwrite, so the client can send only
+    // the fields it wants to change.
     if (parsed.data.colors) {
       patch.colors = { ...tenant.colors, ...parsed.data.colors };
     }
