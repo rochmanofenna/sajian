@@ -148,6 +148,25 @@ export type OnboardingAction =
   | { type: 'delete_delivery_zone'; zone_id: string }
   | { type: 'toggle_payment_method'; method: string; enabled: boolean; config?: Record<string, unknown> }
   | { type: 'request_custom_domain'; domain: string }
+  // Third response pattern — for genuinely missing features.
+  // Logs the request to roadmap_requests so the team can
+  // prioritize. AI ALSO replies with a concrete workaround in
+  // approved framing. See ABSOLUTE RULE 8 in chat/route.ts.
+  | {
+      type: 'log_roadmap_request';
+      category:
+        | 'modifiers'
+        | 'loyalty'
+        | 'reservations'
+        | 'gift_cards'
+        | 'subscriptions'
+        | 'multi_currency'
+        | 'inventory'
+        | 'integrations'
+        | 'other';
+      workaround_offered: string;
+      raw_user_message?: string;
+    }
   | { type: 'ready_to_launch' };
 
 // Result of every action the chat panel applies. Every branch in

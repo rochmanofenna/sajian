@@ -54,6 +54,9 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
   // next turn so it can summarize what actually happened instead of
   // guessing. Capped to the last 6 results to keep prompt size bounded.
   const recentActionResultsRef = useRef<ActionResult[]>([]);
+  // Tracks the most recent user message so log_roadmap_request can
+  // capture it server-side without the AI having to echo it back.
+  const lastUserMessageRef = useRef<string>('');
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -306,6 +309,12 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
           return await applyTogglePaymentMethod(action.method, action.enabled, action.config);
         case 'request_custom_domain':
           return await applyRequestCustomDomain(action.domain);
+        case 'log_roadmap_request':
+          return await applyLogRoadmapRequest(
+            action.category,
+            action.workaround_offered,
+            action.raw_user_message,
+          );
         case 'ready_to_launch':
           await pushMessage({
             role: 'assistant',
@@ -684,6 +693,45 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
     }
   }
 
+  async function applyLogRoadmapRequest(
+    category: string,
+    workaroundOffered: string,
+    rawUserMessage?: string,
+  ): Promise<ActionResult> {
+    const message = (rawUserMessage ?? lastUserMessageRef.current ?? '').trim();
+    if (!message) {
+      return fail('log_roadmap_request', {
+        error_code: 'NO_USER_MESSAGE',
+        error_human: 'Aku gak punya konteks request ini.',
+        suggestion: 'panggil log_roadmap_request hanya setelah user kasih message konkret',
+      });
+    }
+    try {
+      const res = await fetch('/api/admin/roadmap-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category,
+          workaround_offered: workaroundOffered,
+          raw_user_message: message,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Gagal catat request');
+      return ok(
+        'log_roadmap_request',
+        `request kategori "${category}" tercatat (${body?.mode ?? 'created'})`,
+        body?.request,
+      );
+    } catch (err) {
+      return fail('log_roadmap_request', {
+        error_code: 'LOG_ROADMAP_FAILED',
+        error_human: 'Permintaannya udah aku catat ya, tim akan triage. Sementara, coba pendekatan workaround di atas.',
+        debug: { category, message: (err as Error).message },
+      });
+    }
+  }
+
   async function applyRequestCustomDomain(domain: string): Promise<ActionResult> {
     try {
       const res = await fetch('/api/admin/custom-domain', {
@@ -945,6 +993,7 @@ Rewrite the source_jsx to fix this. Use only the allowed primitives (Motion, Ove
   async function send(text: string) {
     if (!text.trim() || loading) return;
     const userMsg = { role: 'user' as const, content: text.trim(), kind: 'text' as const };
+    lastUserMessageRef.current = userMsg.content;
     await pushMessage(userMsg);
     setInput('');
     setLoading(true);
