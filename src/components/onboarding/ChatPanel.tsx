@@ -16,7 +16,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import { useOnboarding } from '@/lib/onboarding/store';
 import { generateSlug } from '@/lib/onboarding/slug';
-import type { OnboardingAction, CategoryDraft, ChatAttachment } from '@/lib/onboarding/types';
+import type {
+  OnboardingAction,
+  CategoryDraft,
+  ChatAttachment,
+  ActionResult,
+} from '@/lib/onboarding/types';
 import { filesToAttachments, fileToAttachment } from '@/lib/onboarding/attachments';
 import Link from 'next/link';
 import { ChatMessage } from './ChatMessage';
@@ -44,119 +49,212 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
   const [input, setInput] = useState('');
   const [uploading, setUploading] = useState<'menu' | 'storefront' | 'logo' | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Ring buffer of recent action results — fed back to the AI on the
+  // next turn so it can summarize what actually happened instead of
+  // guessing. Capped to the last 6 results to keep prompt size bounded.
+  const recentActionResultsRef = useRef<ActionResult[]>([]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length]);
 
-  async function applyAction(action: OnboardingAction) {
-    // Menu mutations are unavailable for ESB tenants — the authoritative
-    // menu lives in ESB, so a local draft edit would never persist and would
-    // only confuse the owner. Refuse with a clear message.
+  // Helpers for the structured ActionResult contract. Every branch
+  // below MUST return one — caller (send) reads the failure list and
+  // surfaces real errors instead of letting AI hallucinate success.
+  const ok = (
+    action: string,
+    summary: string,
+    data?: Record<string, unknown>,
+  ): ActionResult => ({ ok: true, action, summary, data });
+  const fail = (action: string, error: string, suggestion?: string): ActionResult => ({
+    ok: false,
+    action,
+    error,
+    suggestion,
+  });
+
+  // Accept either a real section.id (uuid) or a type name (hero,
+  // about, contact, …). Returns the resolved id or null if no
+  // section matches — caller turns null into a structured failure
+  // instead of silently no-oping.
+  const resolveSectionRef = (ref: string): string | null => {
+    const sections = draft.sections ?? [];
+    const direct = sections.find((s) => s.id === ref);
+    if (direct) return direct.id;
+    const lowered = ref.trim().toLowerCase();
+    const byType = sections.find((s) => s.type === lowered);
+    if (byType) return byType.id;
+    return null;
+  };
+
+  async function applyAction(action: OnboardingAction): Promise<ActionResult> {
     const isEsb = draft.pos_provider === 'esb';
     const menuMutations = new Set(['add_menu_item', 'remove_menu_item', 'update_menu_item']);
     if (isEsb && menuMutations.has(action.type)) {
-      await pushMessage({
-        role: 'assistant',
-        content:
-          'Menu disinkronisasi dari ESB — perubahan ini perlu dilakukan di portal ESB ya.',
-        kind: 'text',
-      });
-      return;
+      return fail(
+        action.type,
+        'Menu disinkronisasi dari ESB — perubahan menu harus dilakukan di portal ESB.',
+        'esb_menu_locked',
+      );
     }
 
-    switch (action.type) {
-      case 'update_name':
-        await patchDraft({ name: action.name, slug: generateSlug(action.name) });
-        break;
-      case 'update_food_type':
-        await patchDraft({ food_type: action.food_type });
-        break;
-      case 'update_tagline':
-        await patchDraft({ tagline: action.tagline });
-        break;
-      case 'update_colors':
-        await patchDraft({ colors: { ...(draft.colors ?? { primary: '#1B5E3B', accent: '#C9A84C', background: '#FDF6EC', dark: '#1A1A18' }), ...action.colors } });
-        break;
-      case 'update_hours':
-        if (action.hours) await patchDraft({ operating_hours: action.hours });
-        break;
-      case 'add_menu_item':
-        await addItem(action.category, action.item);
-        break;
-      case 'remove_menu_item':
-        await removeItem(action.item);
-        break;
-      case 'update_menu_item':
-        await updateItem(action.item, action.field, action.value);
-        break;
-      case 'generate_logo':
-        await generateLogo();
-        break;
-      case 'generate_food_photo':
-        await generateFoodPhoto(action.item);
-        break;
-      case 'generate_all_photos':
-        await generateAllFoodPhotos();
-        break;
-      case 'add_section':
-        await addSection({
-          type: action.section_type,
-          variant: action.variant,
-          props: action.props,
-          position: action.position,
-        });
-        break;
-      case 'remove_section':
-        await removeSection(action.section_id);
-        break;
-      case 'update_section_variant':
-        await updateSectionVariant(action.section_id, action.variant);
-        break;
-      case 'update_section_props':
-        await updateSectionProps(action.section_id, action.props);
-        break;
-      case 'toggle_section':
-        await toggleSection(action.section_id, action.visible);
-        break;
-      case 'reorder_sections':
-        await reorderSections(action.order);
-        break;
-      case 'generate_section_image':
-        await generateSectionImage(action.section_id, action.prompt, action.prop_key);
-        break;
-      case 'generate_hero_image':
-        await generateHeroImage(action.prompt);
-        break;
-      case 'add_custom_section':
-        await applyAddCustomSection(action.source_jsx, action.position);
-        break;
-      case 'update_custom_section':
-        await applyUpdateCustomSection(action.section_id, action.source_jsx);
-        break;
-      case 'set_template':
-        await patchDraft({ theme_template: action.template });
-        break;
-      case 'update_tenant_setting':
-        await applyTenantSetting(action.key, action.value);
-        break;
-      case 'add_location':
-        await applyAddLocation(action.name, action.address, action.phone, action.code);
-        break;
-      case 'update_location':
-        await applyUpdateLocation(action.location_id, action.fields);
-        break;
-      case 'delete_location':
-        await applyDeleteLocation(action.location_id);
-        break;
-      case 'ready_to_launch':
-        await pushMessage({
-          role: 'assistant',
-          content: 'Kalau sudah oke, tap tombol Go Live di bawah buat luncurin restoran kamu ke dunia!',
-          kind: 'launch_ready',
-        });
-        break;
+    try {
+      switch (action.type) {
+        case 'update_name':
+          await patchDraft({ name: action.name, slug: generateSlug(action.name) });
+          return ok(action.type, `nama toko diubah ke "${action.name}"`);
+        case 'update_food_type':
+          await patchDraft({ food_type: action.food_type });
+          return ok(action.type, `food type diubah ke "${action.food_type}"`);
+        case 'update_tagline':
+          await patchDraft({ tagline: action.tagline });
+          return ok(action.type, `tagline diubah ke "${action.tagline}"`);
+        case 'update_colors':
+          await patchDraft({
+            colors: {
+              ...(draft.colors ?? {
+                primary: '#1B5E3B',
+                accent: '#C9A84C',
+                background: '#FDF6EC',
+                dark: '#1A1A18',
+              }),
+              ...action.colors,
+            },
+          });
+          return ok(action.type, 'palet warna diperbarui');
+        case 'update_hours':
+          if (action.hours) await patchDraft({ operating_hours: action.hours });
+          return ok(action.type, 'jam buka diperbarui');
+        case 'add_menu_item':
+          await addItem(action.category, action.item);
+          return ok(action.type, `menambahkan "${action.item.name}" ke kategori ${action.category}`);
+        case 'remove_menu_item':
+          await removeItem(action.item);
+          return ok(action.type, `menghapus "${action.item}" dari menu`);
+        case 'update_menu_item':
+          await updateItem(action.item, action.field, action.value);
+          return ok(action.type, `${action.field} "${action.item}" diubah`);
+        case 'generate_logo':
+          await generateLogo();
+          return ok(action.type, 'logo digenerate');
+        case 'generate_food_photo':
+          await generateFoodPhoto(action.item);
+          return ok(action.type, `foto "${action.item}" digenerate`);
+        case 'generate_all_photos':
+          await generateAllFoodPhotos();
+          return ok(action.type, 'foto semua menu digenerate');
+        case 'add_section':
+          await addSection({
+            type: action.section_type,
+            variant: action.variant,
+            props: action.props,
+            position: action.position,
+          });
+          return ok(action.type, `section ${action.section_type} ditambahkan`);
+        case 'remove_section': {
+          const id = resolveSectionRef(action.section_id);
+          if (!id) {
+            return fail(
+              action.type,
+              `section "${action.section_id}" tidak ditemukan`,
+              'pakai exact section_id dari draft.sections list, atau type name yang persis (hero, about, contact, dll)',
+            );
+          }
+          await removeSection(id);
+          return ok(action.type, `section ${id} dihapus`);
+        }
+        case 'update_section_variant': {
+          const id = resolveSectionRef(action.section_id);
+          if (!id) {
+            return fail(action.type, `section "${action.section_id}" tidak ditemukan`);
+          }
+          await updateSectionVariant(id, action.variant);
+          return ok(action.type, `variant section ${id} diubah ke "${action.variant}"`);
+        }
+        case 'update_section_props': {
+          const id = resolveSectionRef(action.section_id);
+          if (!id) {
+            return fail(action.type, `section "${action.section_id}" tidak ditemukan`);
+          }
+          await updateSectionProps(id, action.props);
+          return ok(
+            action.type,
+            `props section ${id} diperbarui (${Object.keys(action.props).join(', ')})`,
+          );
+        }
+        case 'toggle_section': {
+          const id = resolveSectionRef(action.section_id);
+          if (!id) {
+            return fail(action.type, `section "${action.section_id}" tidak ditemukan`);
+          }
+          await toggleSection(id, action.visible);
+          return ok(
+            action.type,
+            `section ${id} ${action.visible ? 'ditampilkan' : 'disembunyikan'}`,
+          );
+        }
+        case 'reorder_sections': {
+          const before = (draft.sections ?? []).map((s) => s.id);
+          await reorderSections(action.order);
+          const after = (useOnboarding.getState().draft.sections ?? []).map((s) => s.id);
+          const movedSomething = before.length === after.length && before.some((id, i) => id !== after[i]);
+          if (!movedSomething) {
+            return fail(
+              action.type,
+              `urutan section tidak berubah — order yang diberikan tidak cocok dengan section_id atau type yang ada (${after.join(', ')})`,
+              'pakai exact section_id dari draft.sections list, atau type name yang persis (hero, about, contact, dll)',
+            );
+          }
+          return ok(action.type, `urutan section: ${after.join(' → ')}`);
+        }
+        case 'generate_section_image':
+          await generateSectionImage(action.section_id, action.prompt, action.prop_key);
+          return ok(action.type, `gambar section ${action.section_id} digenerate`);
+        case 'generate_hero_image':
+          await generateHeroImage(action.prompt);
+          return ok(action.type, 'gambar hero digenerate');
+        case 'add_custom_section':
+          await applyAddCustomSection(action.source_jsx, action.position);
+          return ok(action.type, 'custom section ditambahkan');
+        case 'update_custom_section':
+          await applyUpdateCustomSection(action.section_id, action.source_jsx);
+          return ok(action.type, `custom section ${action.section_id} diperbarui`);
+        case 'set_template':
+          await patchDraft({ theme_template: action.template });
+          return ok(action.type, `template diubah ke "${action.template}"`);
+        case 'update_tenant_setting': {
+          const result = await applyTenantSetting(action.key, action.value);
+          return result;
+        }
+        case 'add_location': {
+          const result = await applyAddLocation(action.name, action.address, action.phone, action.code);
+          return result;
+        }
+        case 'update_location': {
+          const result = await applyUpdateLocation(action.location_id, action.fields);
+          return result;
+        }
+        case 'delete_location': {
+          const result = await applyDeleteLocation(action.location_id);
+          return result;
+        }
+        case 'ready_to_launch':
+          await pushMessage({
+            role: 'assistant',
+            content:
+              'Kalau sudah oke, tap tombol Go Live di bawah buat luncurin restoran kamu ke dunia!',
+            kind: 'launch_ready',
+          });
+          return ok(action.type, 'launch prompt ditampilkan ke user');
+      }
+    } catch (err) {
+      return fail(
+        (action as { type: string }).type,
+        (err as Error).message ?? 'unknown error',
+        'lihat console untuk stack trace',
+      );
     }
+    return fail((action as { type: string }).type, 'unknown action');
   }
 
   // Look an item up case-insensitively across all categories, then call the
@@ -327,7 +425,7 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
   async function applyTenantSetting(
     key: string,
     value: string | number | boolean | null,
-  ): Promise<void> {
+  ): Promise<ActionResult> {
     const ALLOWED = new Set([
       'multi_branch_mode',
       'currency_symbol',
@@ -337,18 +435,18 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       'is_active',
     ]);
     if (!ALLOWED.has(key)) {
-      console.warn('[chat] update_tenant_setting unknown key', key);
-      return;
+      return fail(
+        'update_tenant_setting',
+        `key "${key}" tidak diizinkan`,
+        `key valid: ${Array.from(ALLOWED).join(', ')}`,
+      );
     }
-    // Pre-launch: the draft is the source of truth. We don't mirror
-    // settings into the draft today — most settings (multi_branch_mode,
-    // locale, currency) become tenant fields on launch and are
-    // user-irrelevant during draft edits anyway. Surface a confirmation
-    // so the AI's reply has something concrete to land on.
     const isLaunched = !!draft.slug && draft.menu_categories?.some((c) => c.items.length > 0);
     if (!isLaunched) {
-      console.info('[chat] settings change deferred until launch', { key, value });
-      return;
+      // Pre-launch: settings will materialize on launch. Treat as ok
+      // so the AI doesn't apologize, but include the deferral hint so
+      // the next-turn AI knows the value isn't live yet.
+      return ok('update_tenant_setting', `setelan ${key}=${String(value)} dicatat (akan dipakai saat launch)`);
     }
     try {
       const res = await fetch('/api/admin/tenant', {
@@ -360,12 +458,9 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? 'Gagal simpan setelan');
       }
+      return ok('update_tenant_setting', `setelan ${key} diubah ke ${String(value)}`);
     } catch (err) {
-      await pushMessage({
-        role: 'assistant',
-        content: `Setelan gagal disimpan: ${(err as Error).message}.`,
-        kind: 'text',
-      });
+      return fail('update_tenant_setting', (err as Error).message);
     }
   }
 
@@ -374,50 +469,43 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
     address?: string,
     phone?: string,
     code?: string,
-  ): Promise<void> {
+  ): Promise<ActionResult> {
     try {
       const res = await fetch('/api/admin/locations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, address, phone, code }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? 'Gagal tambah cabang');
-      }
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Gagal tambah cabang');
+      return ok('add_location', `cabang "${name}" ditambahkan`, body?.location);
     } catch (err) {
-      await pushMessage({
-        role: 'assistant',
-        content: `Tambah cabang gagal: ${(err as Error).message}.`,
-        kind: 'text',
-      });
+      return fail('add_location', (err as Error).message);
     }
   }
 
   async function applyUpdateLocation(
     locationId: string,
     fields: { name?: string; address?: string; phone?: string; is_active?: boolean },
-  ): Promise<void> {
+  ): Promise<ActionResult> {
     try {
       const res = await fetch(`/api/admin/locations/${encodeURIComponent(locationId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(fields),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? 'Gagal update cabang');
-      }
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Gagal update cabang');
+      return ok(
+        'update_location',
+        `cabang ${locationId} diperbarui (${Object.keys(fields).join(', ')})`,
+      );
     } catch (err) {
-      await pushMessage({
-        role: 'assistant',
-        content: `Update cabang gagal: ${(err as Error).message}.`,
-        kind: 'text',
-      });
+      return fail('update_location', (err as Error).message);
     }
   }
 
-  async function applyDeleteLocation(locationId: string): Promise<void> {
+  async function applyDeleteLocation(locationId: string): Promise<ActionResult> {
     try {
       const res = await fetch(`/api/admin/locations/${encodeURIComponent(locationId)}`, {
         method: 'DELETE',
@@ -426,12 +514,9 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? 'Gagal hapus cabang');
       }
+      return ok('delete_location', `cabang ${locationId} dihapus`);
     } catch (err) {
-      await pushMessage({
-        role: 'assistant',
-        content: `Hapus cabang gagal: ${(err as Error).message}.`,
-        kind: 'text',
-      });
+      return fail('delete_location', (err as Error).message);
     }
   }
 
@@ -659,16 +744,21 @@ Rewrite the source_jsx to fix this. Use only the allowed primitives (Motion, Ove
     setLoading(true);
 
     try {
-      // Keep only messages with non-empty text content — photo-upload
-      // bubbles carry content='' and Claude's API rejects an entire request
-      // if any entry has empty content.
       const history = [...messages, userMsg]
         .filter((m) => typeof m.content === 'string' && m.content.trim().length > 0)
         .map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, draft }),
+        body: JSON.stringify({
+          messages: history,
+          draft,
+          // Read-back loop: the previous turn's action outcomes go up
+          // with every request so the AI summarizes reality, not its
+          // own optimistic prediction. The /api/ai/chat route formats
+          // these into a system note for Claude.
+          recent_action_results: recentActionResultsRef.current,
+        }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? 'Gagal menghubungi AI');
@@ -679,14 +769,54 @@ Rewrite the source_jsx to fix this. Use only the allowed primitives (Motion, Ove
         : body.action
           ? [body.action]
           : [];
-      for (const a of actions) await applyAction(a);
+      const turnResults: ActionResult[] = [];
+      for (const a of actions) {
+        const result = await applyAction(a);
+        turnResults.push(result);
+      }
+
+      // Ring buffer — keep only the most recent results so prompts
+      // don't bloat across long conversations.
+      const merged = [...recentActionResultsRef.current, ...turnResults];
+      recentActionResultsRef.current = merged.slice(Math.max(0, merged.length - 6));
+
+      // Surface every failure inline so the user sees the truth even
+      // if the AI's natural-language reply was optimistic. Multiple
+      // failures collapse into one bubble.
+      const failures = turnResults.filter((r) => !r.ok) as Extract<ActionResult, { ok: false }>[];
+      if (failures.length > 0) {
+        const lines = failures.map(
+          (f) => `• ${f.action}: ${f.error}${f.suggestion ? ` (${f.suggestion})` : ''}`,
+        );
+        await pushMessage({
+          role: 'assistant',
+          content:
+            failures.length === 1
+              ? `Action gagal jalan:\n${lines[0]}\n\nAku coba pendekatan lain — kirim ulang permintaannya atau kasih detail lebih spesifik.`
+              : `Beberapa action gagal jalan:\n${lines.join('\n')}\n\nMaaf udah kasih confirm yang nggak akurat. Kirim ulang permintaannya atau kasih detail lebih spesifik.`,
+          kind: 'text',
+        });
+      }
     } catch (e) {
-      console.error('[chat] send failed', e);
-      await pushMessage({
-        role: 'assistant',
-        content: 'Maaf, ada kendala sebentar. Coba kirim ulang pesan kamu.',
-        kind: 'text',
-      });
+      const err = e as Error;
+      const message = err.message ?? '';
+      const lower = message.toLowerCase();
+      // Categorize the chat-flow failure so the user sees something
+      // concrete instead of "ada kendala sebentar".
+      let copy = `Chat gagal: ${message}. Coba kirim lagi.`;
+      if (lower.includes('rate limit') || lower.includes('429') || lower.includes('terlalu banyak')) {
+        copy = 'Terlalu banyak permintaan. Tunggu ~30 detik lalu coba lagi.';
+      } else if (lower.includes('timeout') || lower.includes('aborted')) {
+        copy = 'AI lagi lambat (timeout). Coba lagi sebentar lagi.';
+      } else if (lower.includes('codegen_disabled')) {
+        copy = 'Mode lanjutan belum aktif untuk toko ini. Aktifkan dari Pengaturan dulu.';
+      } else if (lower.includes('unauthorized') || lower.includes('401')) {
+        copy = 'Sesi kamu kadaluarsa. Refresh halaman lalu masuk lagi.';
+      } else if (lower.includes('failed to fetch') || lower.includes('network')) {
+        copy = 'Koneksi terputus. Cek internet kamu lalu coba lagi.';
+      }
+      console.error('[chat] send failed', { message, stack: err.stack });
+      await pushMessage({ role: 'assistant', content: copy, kind: 'text' });
     } finally {
       setLoading(false);
     }

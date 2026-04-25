@@ -144,6 +144,28 @@ export type OnboardingAction =
   | { type: 'delete_location'; location_id: string }
   | { type: 'ready_to_launch' };
 
+// Result of every action the chat panel applies. Every branch in
+// ChatPanel.applyAction returns one of these so the conversation has
+// a verified outcome trail — nothing is allowed to silently succeed
+// or silently fail. The next /api/ai/chat turn passes the recent
+// results back via lastActionResults so the AI summarizes reality
+// instead of hallucinating.
+export type ActionResult =
+  | {
+      ok: true;
+      action: string;
+      summary: string;
+      data?: Record<string, unknown>;
+    }
+  | {
+      ok: false;
+      action: string;
+      error: string;
+      // Optional next-step hint for the AI ("user may need to refresh",
+      // "section_id appears stale", etc).
+      suggestion?: string;
+    };
+
 // Whitelist of tenant settings the AI is allowed to change via
 // update_tenant_setting. Anything else lives in /admin or migrations.
 export type TenantSettingKey =
