@@ -132,9 +132,26 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
 
     try {
       switch (action.type) {
-        case 'update_name':
+        case 'update_name': {
+          // Slug is pinned to the live tenant subdomain once the
+          // tenant has launched — regenerating it from the new name
+          // would break the preview iframe URL (subdomain DNS won't
+          // resolve a slug that doesn't exist) and any QR codes /
+          // links the owner has already shared. Only auto-derive the
+          // slug for fresh, unlaunched drafts.
+          const isLaunched =
+            !!draft.slug &&
+            (draft.menu_categories?.some((c) => c.items.length > 0) ?? false);
+          if (isLaunched) {
+            await patchDraft({ name: action.name });
+            return ok(
+              action.type,
+              `nama toko diubah ke "${action.name}" (slug ${draft.slug} tetap)`,
+            );
+          }
           await patchDraft({ name: action.name, slug: generateSlug(action.name) });
           return ok(action.type, `nama toko diubah ke "${action.name}"`);
+        }
         case 'update_food_type':
           await patchDraft({ food_type: action.food_type });
           return ok(action.type, `food type diubah ke "${action.food_type}"`);
