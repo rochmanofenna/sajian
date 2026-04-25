@@ -59,6 +59,10 @@ const PROMPTS = [
   'tombol pesan agak turun dikit, jangan tabrakan dengan headline',
   'logo, nama, tagline semua di tengah, ditumpuk vertikal',
   'taruh banner promo paling atas, di atas hero',
+  // Phase 5 settings prompts — must NOT deflect to "tim bisa..."
+  'hilangkan pilih cabang langsung tampilkan menu',
+  'matikan multi branch, aku cuma punya 1 cabang',
+  'tambahkan cabang Sudirman, Jl Sudirman no 1, 0812345',
 ];
 
 // The AI must never use these phrases. They were the "I can't do that"
@@ -77,6 +81,13 @@ const FORBIDDEN_PHRASES = [
   'mau aku buatin?',
   'apakah kamu mau aku',
   'maaf belum bisa',
+  // Phase 5 — settings/platform deflection patterns.
+  'tim bisa',
+  'tim akan',
+  'aku catat requestnya buat tim',
+  'lanjut edit bagian lain dulu',
+  'mau lanjut edit bagian lain dulu',
+  'level platform',
 ];
 
 function parseActions(text) {
