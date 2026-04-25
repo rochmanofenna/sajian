@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { getAdminOperatorOrNull } from '@/lib/admin/is-admin';
 import { createServiceClient } from '@/lib/supabase/service';
 import { CodegenOpsClient } from '@/components/admin/CodegenOpsClient';
+import { isDigitalPaymentsEnabled } from '@/lib/platform-flags';
 
 interface TenantSummary {
   tenant_id: string;
@@ -69,26 +70,28 @@ export default async function CodegenOpsPage() {
   const service = createServiceClient();
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  const [tenantsRes, flagsRes, eventsRes, tripsRes, globalRes] = await Promise.all([
-    service.from('tenants').select('id, slug, name').order('name'),
-    service.from('feature_flags').select('tenant_id, codegen_enabled, codegen_enabled_at, codegen_enabled_by'),
-    service
-      .from('codegen_events')
-      .select('id, tenant_id, event_type, created_at, payload')
-      .gte('created_at', since)
-      .order('created_at', { ascending: false })
-      .limit(100),
-    service
-      .from('codegen_circuit_trips')
-      .select('id, tenant_id, reason, metric_snapshot, tripped_at, reset_at, reset_by')
-      .order('tripped_at', { ascending: false })
-      .limit(50),
-    service
-      .from('codegen_global_state')
-      .select('codegen_globally_enabled, disabled_reason, disabled_at, disabled_by')
-      .eq('id', 1)
-      .maybeSingle(),
-  ]);
+  const [tenantsRes, flagsRes, eventsRes, tripsRes, globalRes, digitalPaymentsEnabled] =
+    await Promise.all([
+      service.from('tenants').select('id, slug, name').order('name'),
+      service.from('feature_flags').select('tenant_id, codegen_enabled, codegen_enabled_at, codegen_enabled_by'),
+      service
+        .from('codegen_events')
+        .select('id, tenant_id, event_type, created_at, payload')
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(100),
+      service
+        .from('codegen_circuit_trips')
+        .select('id, tenant_id, reason, metric_snapshot, tripped_at, reset_at, reset_by')
+        .order('tripped_at', { ascending: false })
+        .limit(50),
+      service
+        .from('codegen_global_state')
+        .select('codegen_globally_enabled, disabled_reason, disabled_at, disabled_by')
+        .eq('id', 1)
+        .maybeSingle(),
+      isDigitalPaymentsEnabled(),
+    ]);
 
   const tenantsList = (tenantsRes.data ?? []) as Array<{ id: string; slug: string; name: string }>;
   const flagsByTenant = new Map<string, { codegen_enabled: boolean; codegen_enabled_by: string | null; codegen_enabled_at: string | null }>();
@@ -172,6 +175,7 @@ export default async function CodegenOpsPage() {
         tenants={summaries}
         events={events}
         trips={trips}
+        digitalPaymentsEnabled={digitalPaymentsEnabled}
       />
     </div>
   );

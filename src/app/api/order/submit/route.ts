@@ -24,6 +24,7 @@ import type { ESBBranchSettings } from '@/lib/esb/types';
 import { sendWhatsApp } from '@/lib/notify/whatsapp';
 import { channelFor, checkoutUrl, createEWalletCharge, createQRIS } from '@/lib/payments/xendit';
 import { getCustomerSession } from '@/lib/auth/customer-session';
+import { isDigitalPaymentsEnabled } from '@/lib/platform-flags';
 
 interface ESBCashierEnvelope {
   data?: { orderID?: string; qrData?: string; queueNum?: string };
@@ -43,6 +44,32 @@ export async function POST(req: Request) {
     if (!tenant.is_active) {
       return badRequest('Toko sedang offline. Coba lagi nanti.');
     }
+
+    // Payment-safety gate. Until per-tenant Xendit credentials ship,
+    // every digital payment_method routes to a single global Xendit
+    // account — meaning every tenant's customer money would settle
+    // there. Hard-block at the API boundary regardless of what the
+    // client sent.
+    if (isDigital(body.paymentMethod)) {
+      const allowed = await isDigitalPaymentsEnabled();
+      if (!allowed) {
+        // eslint-disable-next-line no-console
+        console.warn('[order/submit] digital payment blocked by safety gate', {
+          tenant_id: tenant.id,
+          slug: tenant.slug,
+          method: body.paymentMethod,
+        });
+        return NextResponse.json(
+          {
+            error:
+              'Pembayaran digital sementara cuma di kasir. Pesanan kamu udah dicatat — pilih "Bayar di Kasir" lalu bayar pas datang ya.',
+            code: 'DIGITAL_PAYMENTS_DISABLED',
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const supabase = createServiceClient();
 
     const subtotal = body.items.reduce((sum, item) => {

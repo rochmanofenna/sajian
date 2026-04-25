@@ -33,8 +33,14 @@ const METHODS: MethodDef[] = [
 // the cashier flow in Phase 1. Exposing online payments would silently fall
 // through to the native Xendit path, creating a charge the POS never sees.
 // Gate at the UI so the customer can't pick a method that won't work.
-function methodsFor(posProvider: string): MethodDef[] {
+function methodsFor(posProvider: string, digitalEnabled: boolean): MethodDef[] {
+  // ESB tenants only support the cashier flow (Phase 1 spec).
   if (posProvider === 'esb') return METHODS.filter((m) => m.value === 'cashier');
+  // Until per-tenant Xendit ships, every digital method routes to a
+  // single global Xendit account. Filter them out at the UI layer
+  // so customers never see them; the API also hard-blocks for
+  // belt-and-suspenders defense.
+  if (!digitalEnabled) return METHODS.filter((m) => m.value === 'cashier');
   return METHODS;
 }
 
@@ -44,7 +50,24 @@ interface SessionShape {
 
 export function CheckoutView({ tenant }: { tenant: PublicTenant }) {
   const router = useRouter();
-  const availableMethods = methodsFor(tenant.pos_provider);
+  // Digital-payments gate fetched on mount. Defaults to false so the
+  // first paint is cashier-only — matches the API gate exactly.
+  const [digitalEnabled, setDigitalEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/platform-flags/digital-payments', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((b) => {
+        if (!cancelled) setDigitalEnabled(b?.enabled === true);
+      })
+      .catch(() => {
+        if (!cancelled) setDigitalEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const availableMethods = methodsFor(tenant.pos_provider, digitalEnabled);
   const {
     items,
     branchCode,

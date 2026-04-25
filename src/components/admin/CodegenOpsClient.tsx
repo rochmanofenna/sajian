@@ -54,11 +54,13 @@ export function CodegenOpsClient({
   tenants,
   events,
   trips,
+  digitalPaymentsEnabled,
 }: {
   globalState: GlobalState | null;
   tenants: TenantSummary[];
   events: EventRow[];
   trips: TripRow[];
+  digitalPaymentsEnabled: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -127,6 +129,50 @@ export function CodegenOpsClient({
               }`}
             >
               {busy === 'set_global' ? 'Working…' : globallyEnabled ? 'Disable globally' : 'Re-enable globally'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border bg-white p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">Digital payments safety gate</h2>
+            <p className="text-sm text-zinc-500 mt-1">
+              {digitalPaymentsEnabled ? (
+                <>
+                  Enabled. <strong className="text-red-700">Verify per-tenant Xendit credentials are wired before customers transact.</strong>
+                </>
+              ) : (
+                <>
+                  Disabled — every payment_method except cashier is blocked at the API + UI + admin layers. <strong>Keep this off until per-tenant Xendit ships</strong>; one global Xendit key would settle every tenant&apos;s money to a single merchant.
+                </>
+              )}
+            </p>
+          </div>
+          <div className="shrink-0">
+            <button
+              type="button"
+              onClick={() =>
+                call('set_digital_payments', {
+                  enabled: !digitalPaymentsEnabled,
+                  reason: !digitalPaymentsEnabled
+                    ? window.prompt(
+                        'Reason for ENABLING digital payments? Confirm per-tenant Xendit is wired.',
+                      ) ?? ''
+                    : window.prompt('Reason for disabling? (incident, rollback, etc.)') ?? '',
+                })
+              }
+              disabled={busy === 'set_digital_payments' || pending}
+              className={`h-10 px-4 rounded-full text-sm font-medium text-white disabled:opacity-60 ${
+                digitalPaymentsEnabled ? 'bg-red-600' : 'bg-emerald-600'
+              }`}
+            >
+              {busy === 'set_digital_payments'
+                ? 'Working…'
+                : digitalPaymentsEnabled
+                  ? 'Disable digital payments'
+                  : 'Enable digital payments'}
             </button>
           </div>
         </div>

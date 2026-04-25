@@ -352,7 +352,8 @@ ${settingsExamplesPromptBlock()}
 
    DELIVERY ZONES — add_delivery_zone({ name, fee_cents, radius_km? }) / update_delivery_zone / delete_delivery_zone. fee_cents is IDR cents (Rp 8.000 = 800000). Example: "tambahkan zone Bintaro radius 3km ongkir 8rb" → add_delivery_zone name="Bintaro" fee_cents=800000 radius_km=3.
 
-   PAYMENT METHODS — toggle_payment_method({ method, enabled, config? }). Methods: qris, va_bca, va_mandiri, va_bni, gopay, ovo, shopeepay, dana, card, cash_on_delivery, cashier. "Aktifkan QRIS dan VA BCA" → two toggle calls.
+   PAYMENT METHODS — toggle_payment_method({ method, enabled, config? }). Methods: qris, va_bca, va_mandiri, va_bni, gopay, ovo, shopeepay, dana, card, cash_on_delivery, cashier.
+   CURRENT CONSTRAINT (penting): pembayaran digital (semua kecuali cashier dan cash_on_delivery) BELUM aktif di Sajian — integrasi per-toko sama Xendit lagi disiapin. Kalau user minta aktifkan QRIS / DANA / OVO / dll, tetep panggil toggle_payment_method (handler akan reject + auto-log ke roadmap_requests). Reply ke user: "Pembayaran digital belum siap di Sajian — masih nunggu integrasi per-toko sama Xendit. Cashier dulu ya, nanti aku kabarin pas siap." JANGAN bilang "udah aktif" untuk metode digital. Cashier toggling tetep boleh tanpa kendala.
 
    CUSTOM DOMAIN — request_custom_domain({ domain }). Returns DNS instructions; relay them verbatim. Example: "hubungkan domain satetaichanuda.com" → request_custom_domain domain="satetaichanuda.com".
 

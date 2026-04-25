@@ -678,12 +678,37 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         body: JSON.stringify({ method, is_enabled: enabled, config }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error ?? 'Gagal toggle metode pembayaran');
-      return ok(
-        'toggle_payment_method',
-        `metode ${method} ${enabled ? 'diaktifkan' : 'dinonaktifkan'}`,
-        body?.method,
-      );
+      if (res.ok) {
+        return ok(
+          'toggle_payment_method',
+          `metode ${method} ${enabled ? 'diaktifkan' : 'dinonaktifkan'}`,
+          body?.method,
+        );
+      }
+      // Safety-gate refusal — silently log demand to roadmap_requests
+      // so /admin/roadmap shows aggregate interest, then surface the
+      // friendly "belum siap" copy. This is the same pattern the
+      // third response pattern uses.
+      if (body?.code === 'DIGITAL_PAYMENTS_DISABLED') {
+        try {
+          await applyLogRoadmapRequest(
+            'integrations',
+            'Per-toko Xendit lagi disiapkan; pakai cashier dulu.',
+            lastUserMessageRef.current || `aktifkan ${method}`,
+          );
+        } catch {
+          /* roadmap log is best-effort — never fail the parent toggle on it */
+        }
+        return fail('toggle_payment_method', {
+          error_code: 'DIGITAL_PAYMENTS_DISABLED',
+          error_human:
+            'Pembayaran digital belum siap di Sajian — masih nunggu integrasi per-toko sama Xendit. Cashier dulu ya, nanti aku kabarin pas siap.',
+          suggestion:
+            'cashier flow remains available; gate flips after per-tenant Xendit lands',
+          debug: { method, enabled },
+        });
+      }
+      throw new Error(body?.error ?? 'Gagal toggle metode pembayaran');
     } catch (err) {
       return fail('toggle_payment_method', {
         error_code: 'TOGGLE_PAYMENT_FAILED',

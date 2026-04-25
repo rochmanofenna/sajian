@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { requireOwnerOrThrow } from '@/lib/admin/auth';
 import { createServiceClient } from '@/lib/supabase/service';
 import { errorResponse, badRequest } from '@/lib/api/errors';
+import { isDigitalPaymentsEnabled } from '@/lib/platform-flags';
 
 export const runtime = 'nodejs';
 
@@ -50,6 +51,21 @@ export async function GET() {
   }
 }
 
+// Methods that route through Xendit. Until per-tenant Xendit
+// credentials ship, enabling any of these is a settlement-leak
+// risk and is hard-blocked at this admin endpoint.
+const DIGITAL_METHODS = new Set([
+  'qris',
+  'va_bca',
+  'va_mandiri',
+  'va_bni',
+  'gopay',
+  'ovo',
+  'shopeepay',
+  'dana',
+  'card',
+]);
+
 export async function POST(req: Request) {
   try {
     const { tenant } = await requireOwnerOrThrow();
@@ -57,6 +73,24 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return badRequest(parsed.error.issues.map((i) => i.message).join('; '));
     }
+
+    // Refuse to enable any digital method while the platform-wide
+    // safety gate is closed. Disabling/turning OFF is always allowed
+    // (for incident response), as is toggling cashier / cash_on_delivery.
+    if (parsed.data.is_enabled && DIGITAL_METHODS.has(parsed.data.method)) {
+      const allowed = await isDigitalPaymentsEnabled();
+      if (!allowed) {
+        return NextResponse.json(
+          {
+            error:
+              'Pembayaran digital belum siap di Sajian — masih nunggu integrasi per-toko sama Xendit. Cashier dulu ya, nanti aku kabarin pas siap.',
+            code: 'DIGITAL_PAYMENTS_DISABLED',
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const service = createServiceClient();
     const { data, error } = await service
       .from('tenant_payment_methods')
