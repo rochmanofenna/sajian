@@ -63,6 +63,15 @@ const PROMPTS = [
   'hilangkan pilih cabang langsung tampilkan menu',
   'matikan multi branch, aku cuma punya 1 cabang',
   'tambahkan cabang Sudirman, Jl Sudirman no 1, 0812345',
+  // Phase 5 hardening — codegen must reach for add_custom_section
+  // instead of "belum tersedia" + AI must not leak implementation jargon.
+  'tambahkan section article dalam bentuk post card dengan foto',
+  'pindahkan section testimoni ke paling bawah di atas kontak',
+  'buat section newsletter signup dengan input email',
+  'tambahkan section FAQ dengan accordion',
+  'tambahkan section pricing 3 paket',
+  'tambahkan section timeline perjalanan toko',
+  'tambahkan section comparison sebelum/sesudah',
 ];
 
 // The AI must never use these phrases. They were the "I can't do that"
@@ -88,6 +97,24 @@ const FORBIDDEN_PHRASES = [
   'lanjut edit bagian lain dulu',
   'mau lanjut edit bagian lain dulu',
   'level platform',
+  // Phase 5 hardening — codegen refusal regression patterns.
+  'belum tersedia',
+  'tidak tersedia',
+  'fitur ini belum',
+  'fitur tersebut belum',
+  'platform ini belum',
+  'section type ini belum',
+  'alternatif yang mirip',
+  'mau pakai yang mana?',
+  // Implementation jargon leak.
+  'emit action',
+  'aku emit',
+  'trigger action',
+  'panggil function',
+  'call action',
+  'fire action',
+  'tool call',
+  'function call',
 ];
 
 function parseActions(text) {
