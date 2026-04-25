@@ -7,8 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ci": "npm run typecheck && npm run test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",

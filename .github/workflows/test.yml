@@ -1,0 +1,62 @@
+name: test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel in-flight runs when a PR gets a new push — keeps the queue
+# moving + avoids charging Actions minutes for stale commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  vitest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  # Build catches Next.js-specific errors (route collisions, RSC
+  # boundary violations, MDX compile breaks) that tsc + vitest miss.
+  # Skip on PRs that only touch docs / migrations to save minutes.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          # Build doesn't need real values for these — just non-empty
+          # so the boot-time validators don't throw. CI runs against
+          # placeholder env; integration tests (Week 2) use real
+          # ephemeral Supabase.
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-key
+          ANTHROPIC_API_KEY: ci-placeholder-anthropic-key
+          OPENAI_API_KEY: ci-placeholder-openai-key
+          XENDIT_SECRET_KEY: ci-placeholder-xendit-key
+          PREVIEW_TOKEN_SECRET: ci-placeholder-preview-secret-32chars
