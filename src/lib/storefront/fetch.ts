@@ -6,6 +6,7 @@
 import { createServiceClient } from '@/lib/supabase/service';
 import type { PublicTenant } from '@/lib/tenant';
 import type { SectionContext, StorefrontSection } from './section-types';
+import type { TenantDraft } from '@/lib/onboarding/types';
 
 export async function getStorefrontSections(
   tenantId: string,
@@ -40,6 +41,63 @@ export async function getStorefrontSections(
     }
     return r;
   }) as StorefrontSection[];
+}
+
+// Draft-source variant. Pulls onboarding_drafts.draft for the supplied
+// owner and translates draft.sections into the same StorefrontSection
+// shape the renderer consumes. Used by preview mode — the iframe URL
+// carries a verified preview_token so we already know the requester
+// owns this draft.
+//
+// Custom sections in the draft carry their codegen fields nested under
+// props (the onboarding store keeps the same shape), so we don't need
+// the join-flatten dance the published-source variant does.
+export async function getStorefrontSectionsFromDraft(
+  draftId: string,
+): Promise<{ sections: StorefrontSection[]; draft: TenantDraft } | null> {
+  const sb = createServiceClient();
+  const { data, error } = await sb
+    .from('onboarding_drafts')
+    .select('id, draft')
+    .eq('id', draftId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const draft = (data.draft ?? {}) as TenantDraft;
+  const list = (draft.sections ?? []) as StorefrontSection[];
+  // Defensive copy + sort + dedupe of the codegen fields so the
+  // renderer sees the same shape it gets from getStorefrontSections.
+  const sections: StorefrontSection[] = list
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((s) => ({ ...s, props: { ...(s.props ?? {}) } }));
+  return { sections, draft };
+}
+
+export function buildSectionContextFromDraft(
+  tenant: PublicTenant,
+  draft: TenantDraft,
+): SectionContext {
+  const cats = draft.menu_categories ?? [];
+  return {
+    name: draft.name ?? tenant.name,
+    tagline: draft.tagline ?? tenant.tagline ?? null,
+    logoUrl: draft.logo_url ?? tenant.logo_url ?? null,
+    heroImageUrl: draft.hero_image_url ?? tenant.hero_image_url ?? null,
+    colors: draft.colors ?? tenant.colors,
+    menuCategories: cats.map((c) => ({
+      name: c.name,
+      items: c.items
+        .filter((i) => i.is_available !== false)
+        .map((i) => ({
+          name: i.name,
+          description: i.description,
+          price: i.price,
+          image_url: i.image_url ?? null,
+        })),
+    })),
+    whatsapp: tenant.support_whatsapp ?? null,
+    address: draft.location ?? null,
+  };
 }
 
 export async function buildSectionContext(

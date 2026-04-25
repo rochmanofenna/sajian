@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { getPublicTenantAnyStatus } from '@/lib/tenant';
 import { StoreHeader } from '@/components/storefront/StoreHeader';
 import { StoreFooter } from '@/components/storefront/StoreFooter';
+import { PreviewModeBanner } from '@/components/storefront/PreviewModeBanner';
+import { getPreviewMode } from '@/lib/preview/mode';
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {
   const tenant = await getPublicTenantAnyStatus();
@@ -49,8 +51,11 @@ export default async function StorefrontLayout({ children }: { children: React.R
     );
   }
 
+  const preview = await getPreviewMode(tenant);
+
   return (
     <div className="flex flex-col flex-1 min-h-screen">
+      {preview && <PreviewModeBanner />}
       <StoreHeader tenant={tenant} />
       <div className="flex-1">{children}</div>
       <StoreFooter tenant={tenant} />
