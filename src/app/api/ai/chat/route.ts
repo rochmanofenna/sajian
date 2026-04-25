@@ -29,6 +29,31 @@ export const maxDuration = 30;
 interface ChatReq {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
   draft: TenantDraft;
+  // Read-back loop: previous turn's action outcomes the client
+  // applied. Injected into the system prompt so Claude summarizes
+  // reality rather than guessing whether its earlier action calls
+  // actually landed.
+  recent_action_results?: Array<{
+    ok: boolean;
+    action: string;
+    summary?: string;
+    error?: string;
+    suggestion?: string;
+  }>;
+}
+
+function actionResultsBlock(
+  results: ChatReq['recent_action_results'] | undefined,
+): string {
+  if (!results || results.length === 0) return '';
+  const lines = results.map((r) => {
+    if (r.ok) {
+      return `  ✓ ${r.action} — ${r.summary ?? ''}`.trim();
+    }
+    const hint = r.suggestion ? ` (${r.suggestion})` : '';
+    return `  ✗ ${r.action} GAGAL — ${r.error ?? 'unknown'}${hint}`;
+  });
+  return `\n\nRECENT ACTION RESULTS (what your previous turn's actions actually did — base your reply on this, never on your prediction):\n${lines.join('\n')}\n`;
 }
 
 // Re-setup mode fires when the draft was seeded from an existing live tenant
@@ -96,7 +121,11 @@ function sectionPropsCatalog(): string {
   ].join('\n');
 }
 
-const SYSTEM = (draft: TenantDraft, codegenAllowed: boolean) => {
+const SYSTEM = (
+  draft: TenantDraft,
+  codegenAllowed: boolean,
+  recentActionResults?: ChatReq['recent_action_results'],
+) => {
   const reSetup = isReSetupMode(draft);
   const isEsb = draft.pos_provider === 'esb';
   const header = reSetup
@@ -149,7 +178,33 @@ const SYSTEM = (draft: TenantDraft, codegenAllowed: boolean) => {
 
 CODEGEN CAPABILITIES (last resort — see DECISION ORDER below):
 
+KAMU PUNYA CODEGEN. Kalau user minta section yang nggak ada di registry (Article, Blog, Post Card, Timeline, FAQ, Newsletter, Pricing, Comparison, Stats, Team, Logos, Press, Awards, dll) JANGAN bilang "belum tersedia" atau "fitur ini belum ada". BUAT section custom pakai primitives via add_custom_section. Primitives yang tersedia: Box, Stack, Image, Text, Button, Icon, Motion, Overlay, Countdown, Scheduled, TimeOfDay. Sanitizer akan validasi sebelum compile.
+
+Contoh wajib:
+- User: "tambahkan section article dalam bentuk post card dengan foto"
+  Kamu: panggil add_custom_section dengan slot tree berisi 3 Box (post card), masing-masing punya Image + Stack(Text title, Text excerpt, Text date).
+- User: "buat section newsletter signup"
+  Kamu: add_custom_section dengan Stack(Text headline, Text caption, Box berisi input email + Button submit). Catat: input/form gak interaktif, tapi bentuknya rendered.
+- User: "tambahkan section FAQ"
+  Kamu: add_custom_section dengan Stack berisi beberapa Box (collapsible look) berisi Text question + Text answer.
+- User: "section pricing 3 paket"
+  Kamu: add_custom_section dengan grid 3 Box (price card), tiap Box punya Stack(Text tier, Text price, Text features list, Button "Pilih").
+
+Algoritma kalau user minta section yang asing:
+1. Bayangkan bentuknya — grid? list? card stack? hero variant? timeline? overlay?
+2. Pilih primitives yang sesuai.
+3. Panggil add_custom_section.
+4. Konfirmasi: "Sudah aku tambahin section [X]. Foto-fotonya bisa kamu upload atau aku generate."
+
+NEVER:
+- "fitur belum tersedia di platform"
+- "alternatif yang mirip"
+- "Mau pakai yang mana?"
+- ada section yang "tidak bisa dibuat"
+
 ABSOLUTE RULES — NEVER VIOLATE:
+
+0. READ-BACK BEFORE YOU CONFIRM. If a RECENT ACTION RESULTS block is present in this prompt, your reply MUST reflect what actually happened in the previous turn — successes and failures. Do not write "Sudah aku pindahin" or "Beres" if the previous turn's reorder_sections action returned ✗. Acknowledge the failure honestly and try a different approach (different section_id, different order encoding). Hallucinated success is a bug, not a politeness.
 
 1. For any request involving position, alignment, spacing, size, color, font, animation, or layout — you ALWAYS have an answer. If section variants and props don't fit, immediately reach for add_custom_section or add_section type=canvas. You do not ask permission. You do not warn the user about template limits. You just do it.
 
@@ -170,6 +225,27 @@ ABSOLUTE RULES — NEVER VIOLATE:
    - "lanjut edit bagian lain dulu"
    - "pengaturan platform", "level platform" (used as a refusal)
    - "mau lanjut edit bagian lain dulu?"
+   // Codegen refusal regressions:
+   - "belum tersedia"
+   - "tidak tersedia"
+   - "fitur ini belum"
+   - "fitur tersebut belum"
+   - "platform ini belum"
+   - "di platform ini" (used as a refusal)
+   - "section type ini belum"
+   - "alternatif yang mirip"
+   - "Mau pakai yang mana?"
+   - "Mau aku buatkan"
+   // Implementation jargon leak — never describe how the system works:
+   - "emit action"
+   - "aku emit"
+   - "trigger action"
+   - "panggil function"
+   - "call action"
+   - "fire action"
+   - "panggil tool"
+   - "tool call"
+   - "function call"
 
 3. For spatial requests, the response template is:
    "Oke, [what you did]. [Optional: one short detail]."
@@ -297,7 +373,7 @@ Speak casual, friendly Bahasa Indonesia (like chatting with a friend — not for
 Current draft state:
 \`\`\`json
 ${JSON.stringify(draft, null, 2)}
-\`\`\`${menuContext}${sectionContext}${codegenCapabilities}
+\`\`\`${actionResultsBlock(recentActionResults)}${menuContext}${sectionContext}${codegenCapabilities}
 
 ${goals}
 
@@ -520,7 +596,7 @@ export async function POST(req: Request) {
     const res = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 1024,
-      system: SYSTEM(draft, codegenAllowed),
+      system: SYSTEM(draft, codegenAllowed, body.recent_action_results),
       messages: cleanMessages,
     });
 
