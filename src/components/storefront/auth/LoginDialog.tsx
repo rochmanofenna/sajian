@@ -3,8 +3,15 @@
 // Customer login dialog — email OTP only. Two stages (email → code)
 // with a 60-second resend cooldown. Hooks into the existing Supabase
 // auth pipeline via the /api/auth/customer/* routes.
+//
+// Rendered via React Portal to document.body so the modal escapes
+// any parent stacking context (StoreHeader uses position:sticky +
+// its own z-index, which previously let the storefront chrome bleed
+// through this dialog). Body scroll lock + ESC dismiss + click-
+// outside dismiss + autofocus on the active input.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { PublicTenant } from '@/lib/tenant';
 
 interface Props {
@@ -25,6 +32,13 @@ export function LoginDialog({ tenant, open, onClose, onSuccess, initialEmail }: 
   const [error, setError] = useState<string | null>(null);
   const [resendAt, setResendAt] = useState<number>(0);
   const [now, setNow] = useState(() => Date.now());
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -40,7 +54,32 @@ export function LoginDialog({ tenant, open, onClose, onSuccess, initialEmail }: 
     return () => clearInterval(id);
   }, [resendAt]);
 
-  if (!open) return null;
+  // Body scroll lock while open + ESC dismiss. Both run only when
+  // we're the active modal so multiple-mount scenarios (header +
+  // track page) don't fight each other.
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose]);
+
+  // Autofocus the active input when stage changes — phones especially
+  // benefit because the keyboard pops without an extra tap.
+  useEffect(() => {
+    if (!open) return;
+    const target = stage === 'email' ? emailInputRef.current : codeInputRef.current;
+    target?.focus();
+  }, [open, stage]);
+
+  if (!open || !mounted) return null;
 
   async function sendOtp() {
     setError(null);
@@ -99,18 +138,23 @@ export function LoginDialog({ tenant, open, onClose, onSuccess, initialEmail }: 
   const cooldownSec = Math.max(0, Math.ceil((resendAt - now) / 1000));
   const canResend = cooldownSec === 0;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.5)' }}
+      className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
       role="dialog"
       aria-modal="true"
+      aria-label={stage === 'email' ? 'Masuk atau daftar' : 'Verifikasi kode'}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-3xl bg-white p-6 space-y-4"
+        className="w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
-        style={{ color: tenant.colors.dark }}
+        style={{
+          color: tenant.colors.dark,
+          background: '#fff',
+          boxShadow: '0 30px 80px -20px rgba(0,0,0,0.45)',
+        }}
       >
         <div className="flex items-start justify-between">
           <div>
@@ -145,6 +189,7 @@ export function LoginDialog({ tenant, open, onClose, onSuccess, initialEmail }: 
             <label className="block text-sm space-y-1">
               <span>Email</span>
               <input
+                ref={emailInputRef}
                 type="email"
                 autoComplete="email"
                 value={email}
@@ -179,6 +224,7 @@ export function LoginDialog({ tenant, open, onClose, onSuccess, initialEmail }: 
               Kode dikirim ke <span className="font-medium">{email}</span>. Cek inbox atau spam.
             </p>
             <input
+              ref={codeInputRef}
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
@@ -222,6 +268,7 @@ export function LoginDialog({ tenant, open, onClose, onSuccess, initialEmail }: 
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
