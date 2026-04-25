@@ -53,8 +53,20 @@ export default async function StorefrontLayout({ children }: { children: React.R
 
   const preview = await getPreviewMode(tenant);
 
+  // Pin tenant colors at the layout level so /menu, /cart, /checkout,
+  // /akun all inherit the active palette identically to /. Without
+  // this, intermediate variants whose templates don't set background
+  // explicitly fall through to whatever the root body resolved to,
+  // which is sometimes the apex Sajian default rather than the
+  // tenant's color.
   return (
-    <div className="flex flex-col flex-1 min-h-screen">
+    <div
+      className="flex flex-col flex-1 min-h-screen"
+      style={{
+        background: tenant.colors.background,
+        color: tenant.colors.dark,
+      }}
+    >
       {preview && <PreviewModeBanner />}
       <StoreHeader tenant={tenant} />
       <div className="flex-1">{children}</div>
