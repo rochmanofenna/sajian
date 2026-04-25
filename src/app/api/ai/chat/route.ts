@@ -22,6 +22,7 @@ import type { OnboardingAction, TenantDraft } from '@/lib/onboarding/types';
 import { SECTION_VARIANTS } from '@/lib/storefront/section-types';
 import { isCodegenEnabled } from '@/lib/feature-flags';
 import { getOwnerOrNull } from '@/lib/admin/auth';
+import { settingsExamplesPromptBlock } from '@/lib/tenant-settings/registry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -38,6 +39,8 @@ interface ChatReq {
     action: string;
     summary?: string;
     error?: string;
+    error_code?: string;
+    error_human?: string;
     suggestion?: string;
   }>;
 }
@@ -50,10 +53,11 @@ function actionResultsBlock(
     if (r.ok) {
       return `  ✓ ${r.action} — ${r.summary ?? ''}`.trim();
     }
-    const hint = r.suggestion ? ` (${r.suggestion})` : '';
-    return `  ✗ ${r.action} GAGAL — ${r.error ?? 'unknown'}${hint}`;
+    const human = r.error_human ?? r.error ?? 'unknown';
+    const hint = r.suggestion ? ` [hint: ${r.suggestion}]` : '';
+    return `  ✗ ${r.action} GAGAL — ${human}${hint}`;
   });
-  return `\n\nRECENT ACTION RESULTS (what your previous turn's actions actually did — base your reply on this, never on your prediction):\n${lines.join('\n')}\n`;
+  return `\n\nRECENT ACTION RESULTS (what your previous turn's actions actually did — base your reply on this, never on your prediction. When telling the user about a failure, paraphrase the human-readable text — NEVER copy error_code, IDs, hashes, or any debug strings into chat.):\n${lines.join('\n')}\n`;
 }
 
 // Re-setup mode fires when the draft was seeded from an existing live tenant
@@ -89,6 +93,52 @@ function sectionsSummary(draft: TenantDraft): string {
         }`,
     )
     .join('\n');
+}
+
+// Authoritative draft snapshot the AI MUST use as the source of
+// truth for action ids + setting values. Renders as a fenced block
+// near the top of the system prompt with explicit "use these IDs
+// exactly" instructions — fixes the previous regression where the
+// AI was inferring section ids from conversation history (often
+// stale) and the action handler rejected them.
+function draftStateBlock(draft: TenantDraft): string {
+  const sections = (draft.sections ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
+  const sectionLines =
+    sections.length === 0
+      ? '  (belum ada sections)'
+      : sections
+          .map(
+            (s, i) =>
+              `  ${i + 1}. id="${s.id}" type=${s.type} variant=${s.variant}${
+                s.is_visible === false ? ' · hidden' : ''
+              }`,
+          )
+          .join('\n');
+  const colors = draft.colors ?? null;
+  const menuItems = (draft.menu_categories ?? []).reduce(
+    (n, c) => n + c.items.length,
+    0,
+  );
+  const settings = [
+    `  - colors: ${colors ? `primary=${colors.primary} bg=${colors.background} dark=${colors.dark} accent=${colors.accent}` : '(default)'}`,
+    `  - typography: heading=${'(default)'} body=${'(default)'}`,
+    `  - currency: ${draft.pos_provider === 'esb' ? 'IDR (esb-managed)' : 'IDR'}`,
+    `  - locale: ${'id-ID'}`,
+    `  - menu: ${menuItems} item dalam ${(draft.menu_categories ?? []).length} kategori`,
+    `  - logo_set: ${draft.logo_url ? 'true' : 'false'}`,
+    `  - hero_image_set: ${draft.hero_image_url ? 'true' : 'false'}`,
+    `  - operating_hours_set: ${draft.operating_hours ? 'true' : 'false'}`,
+    `  - theme_template: ${draft.theme_template ?? 'modern'}`,
+  ].join('\n');
+  return `
+<current_draft_state>
+Sections in current order (USE THESE section_id VALUES EXACTLY when calling reorder_sections, update_section_props, update_section_variant, toggle_section, remove_section, update_custom_section. Never invent IDs. Never reuse IDs from earlier turns — they may be stale.):
+${sectionLines}
+
+Tenant settings snapshot:
+${settings}
+</current_draft_state>
+`;
 }
 
 function sectionCatalog(): string {
@@ -231,6 +281,13 @@ ABSOLUTE RULES — NEVER VIOLATE:
    - "diubah oleh tim", "perlu diubah oleh"
    - "Ada perubahan lain yang bisa aku bantu sekarang?"
    - "ganti font belum bisa", "font belum bisa"
+   // Phase 5+ batch settings deflection patterns:
+   - "level Xendit", "konfigurasi Xendit"
+   - "perlu setting di backend"
+   - "domain butuh setup teknis"
+   - "pajak diatur di sistem"
+   - "ongkir hardcoded"
+   - "ongkir di-set di backend"
    // Codegen refusal regressions:
    - "belum tersedia"
    - "tidak tersedia"
@@ -266,9 +323,18 @@ ABSOLUTE RULES — NEVER VIOLATE:
    ✗ "Apakah kamu mau aku tambahkan section baru?" (feasibility — never ask)
    ✓ "Tengahnya di hero atau di tengah halaman scroll?" (intent — OK)
 
-7. SETTINGS / LOCATIONS / TYPOGRAPHY are YOUR job, not "the team's". Multi-branch mode, currency, locale, timezone, opening hours, support contacts, branch list, AND fonts (heading + body) — you can change all of these directly with update_tenant_setting / add_location / update_location / delete_location. NEVER punt to "tim akan", "tim bisa", "aku catat untuk tim", "level platform", "level tema", "level template", "tim teknis", "diubah oleh tim". The tenant owner is talking to you because YOU are the team.
+7. SETTINGS / LOCATIONS / TYPOGRAPHY / DELIVERY / PAYMENTS / DOMAINS are YOUR job, not "the team's". Anything in the registry below — you can change directly. NEVER punt to "tim akan", "tim bisa", "aku catat untuk tim", "level platform", "level tema", "level template", "tim teknis", "diubah oleh tim", "konfigurasi Xendit", "perlu setting di backend". The tenant owner is talking to you because YOU are the team.
 
-   FONTS specifically: pick any Google Fonts family. Apply via update_tenant_setting with key=heading_font_family or key=body_font_family. NEVER refuse a font request. Common pairings to suggest if the owner asks "yang bagus apa": Poppins+Inter, Playfair Display+Lato, Fraunces+Plus Jakarta Sans, Montserrat+Open Sans.
+   FONTS specifically: pick any Google Fonts family. Apply via update_tenant_setting with key=heading_font_family or key=body_font_family. NEVER refuse a font request. Common pairings to suggest: Poppins+Inter, Playfair Display+Lato, Fraunces+Plus Jakarta Sans, Montserrat+Open Sans.
+
+   FULL TENANT SETTING REGISTRY (every key listed here is mutable via update_tenant_setting; the registry-driven PATCH route validates types and applies any unit transforms automatically — e.g. tax_rate_percent=11 stores as 1100 bps):
+${settingsExamplesPromptBlock()}
+
+   DELIVERY ZONES — add_delivery_zone({ name, fee_cents, radius_km? }) / update_delivery_zone / delete_delivery_zone. fee_cents is IDR cents (Rp 8.000 = 800000). Example: "tambahkan zone Bintaro radius 3km ongkir 8rb" → add_delivery_zone name="Bintaro" fee_cents=800000 radius_km=3.
+
+   PAYMENT METHODS — toggle_payment_method({ method, enabled, config? }). Methods: qris, va_bca, va_mandiri, va_bni, gopay, ovo, shopeepay, dana, card, cash_on_delivery, cashier. "Aktifkan QRIS dan VA BCA" → two toggle calls.
+
+   CUSTOM DOMAIN — request_custom_domain({ domain }). Returns DNS instructions; relay them verbatim. Example: "hubungkan domain satetaichanuda.com" → request_custom_domain domain="satetaichanuda.com".
 
    Adversarial examples:
 
@@ -388,7 +454,8 @@ RESPONSE TO OWNER on codegen: say what you built in one casual sentence; NEVER p
 
 Speak casual, friendly Bahasa Indonesia (like chatting with a friend — not formal). Keep replies short: 1–3 sentences. Do NOT use emojis or decorative symbols — the UI is editorial and emojis read as tacky. Plain text only.
 
-Current draft state:
+${draftStateBlock(draft)}
+Current draft state (full JSON for reference — section_id values above are AUTHORITATIVE):
 \`\`\`json
 ${JSON.stringify(draft, null, 2)}
 \`\`\`${actionResultsBlock(recentActionResults)}${menuContext}${sectionContext}${codegenCapabilities}

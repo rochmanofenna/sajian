@@ -22,6 +22,7 @@ import type {
   ChatAttachment,
   ActionResult,
 } from '@/lib/onboarding/types';
+import { settingKeys } from '@/lib/tenant-settings/registry';
 import { filesToAttachments, fileToAttachment } from '@/lib/onboarding/attachments';
 import Link from 'next/link';
 import { ChatMessage } from './ChatMessage';
@@ -66,12 +67,40 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
     summary: string,
     data?: Record<string, unknown>,
   ): ActionResult => ({ ok: true, action, summary, data });
-  const fail = (action: string, error: string, suggestion?: string): ActionResult => ({
-    ok: false,
-    action,
-    error,
-    suggestion,
-  });
+  const fail = (
+    action: string,
+    opts: {
+      error_code: string;
+      error_human: string;
+      suggestion?: string;
+      debug?: Record<string, unknown>;
+    } | string,
+    legacySuggestion?: string,
+  ): ActionResult => {
+    // Back-compat shorthand: callers that pass a plain string become
+    // a generic-coded failure with the string serving as both
+    // error_human and (alias) error. New call sites should pass the
+    // structured opts object so debug stays out of user copy.
+    if (typeof opts === 'string') {
+      return {
+        ok: false,
+        action,
+        error_code: 'LEGACY',
+        error_human: opts,
+        error: opts,
+        suggestion: legacySuggestion,
+      };
+    }
+    return {
+      ok: false,
+      action,
+      error_code: opts.error_code,
+      error_human: opts.error_human,
+      error: opts.error_human,
+      suggestion: opts.suggestion,
+      debug: opts.debug,
+    };
+  };
 
   // Accept either a real section.id (uuid) or a type name (hero,
   // about, contact, …). Returns the resolved id or null if no
@@ -91,11 +120,11 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
     const isEsb = draft.pos_provider === 'esb';
     const menuMutations = new Set(['add_menu_item', 'remove_menu_item', 'update_menu_item']);
     if (isEsb && menuMutations.has(action.type)) {
-      return fail(
-        action.type,
-        'Menu disinkronisasi dari ESB — perubahan menu harus dilakukan di portal ESB.',
-        'esb_menu_locked',
-      );
+      return fail(action.type, {
+        error_code: 'ESB_MENU_LOCKED',
+        error_human:
+          'Menu disinkronisasi dari ESB — perubahan menu harus dilakukan di portal ESB.',
+      });
     }
 
     try {
@@ -154,11 +183,13 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         case 'remove_section': {
           const id = resolveSectionRef(action.section_id);
           if (!id) {
-            return fail(
-              action.type,
-              `section "${action.section_id}" tidak ditemukan`,
-              'pakai exact section_id dari draft.sections list, atau type name yang persis (hero, about, contact, dll)',
-            );
+            return fail(action.type, {
+              error_code: 'INVALID_SECTION_ID',
+              error_human:
+                'Section yang kamu sebutin nggak ada di draft. Sebut by nama (misal "testimoni", "kontak") atau cek lagi.',
+              suggestion: 'use exact section_id from current_draft_state',
+              debug: { ref: action.section_id },
+            });
           }
           await removeSection(id);
           return ok(action.type, `section ${id} dihapus`);
@@ -166,7 +197,12 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         case 'update_section_variant': {
           const id = resolveSectionRef(action.section_id);
           if (!id) {
-            return fail(action.type, `section "${action.section_id}" tidak ditemukan`);
+            return fail(action.type, {
+              error_code: 'INVALID_SECTION_ID',
+              error_human: 'Section yang kamu sebutin nggak ada di draft.',
+              suggestion: 'use exact section_id from current_draft_state',
+              debug: { ref: action.section_id },
+            });
           }
           await updateSectionVariant(id, action.variant);
           return ok(action.type, `variant section ${id} diubah ke "${action.variant}"`);
@@ -174,7 +210,12 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         case 'update_section_props': {
           const id = resolveSectionRef(action.section_id);
           if (!id) {
-            return fail(action.type, `section "${action.section_id}" tidak ditemukan`);
+            return fail(action.type, {
+              error_code: 'INVALID_SECTION_ID',
+              error_human: 'Section yang kamu sebutin nggak ada di draft.',
+              suggestion: 'use exact section_id from current_draft_state',
+              debug: { ref: action.section_id },
+            });
           }
           await updateSectionProps(id, action.props);
           return ok(
@@ -185,7 +226,12 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         case 'toggle_section': {
           const id = resolveSectionRef(action.section_id);
           if (!id) {
-            return fail(action.type, `section "${action.section_id}" tidak ditemukan`);
+            return fail(action.type, {
+              error_code: 'INVALID_SECTION_ID',
+              error_human: 'Section yang kamu sebutin nggak ada di draft.',
+              suggestion: 'use exact section_id from current_draft_state',
+              debug: { ref: action.section_id },
+            });
           }
           await toggleSection(id, action.visible);
           return ok(
@@ -194,18 +240,30 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
           );
         }
         case 'reorder_sections': {
-          const before = (draft.sections ?? []).map((s) => s.id);
+          const beforeSections = draft.sections ?? [];
+          const before = beforeSections.map((s) => s.id);
           await reorderSections(action.order);
-          const after = (useOnboarding.getState().draft.sections ?? []).map((s) => s.id);
-          const movedSomething = before.length === after.length && before.some((id, i) => id !== after[i]);
+          const afterSections = useOnboarding.getState().draft.sections ?? [];
+          const after = afterSections.map((s) => s.id);
+          const movedSomething =
+            before.length === after.length && before.some((id, i) => id !== after[i]);
           if (!movedSomething) {
-            return fail(
-              action.type,
-              `urutan section tidak berubah — order yang diberikan tidak cocok dengan section_id atau type yang ada (${after.join(', ')})`,
-              'pakai exact section_id dari draft.sections list, atau type name yang persis (hero, about, contact, dll)',
-            );
+            // Build a user-friendly summary of WHAT EXISTS using
+            // section types — never user-facing UUIDs. Debug payload
+            // carries the raw IDs for logs / Sentry only.
+            const knownTypes = afterSections.map((s) => s.type).join(', ');
+            return fail(action.type, {
+              error_code: 'REORDER_NO_OP',
+              error_human: `Urutan section nggak berubah — yang ada di draft: ${knownTypes}. Sebut section by nama (misal "testimoni", "kontak") biar aku bisa atur ulang.`,
+              suggestion:
+                'use exact section_id values from current_draft_state, or type names that match (hero, about, contact, testimonials, promo, etc)',
+              debug: {
+                requested_order: action.order,
+                actual_ids: after,
+              },
+            });
           }
-          return ok(action.type, `urutan section: ${after.join(' → ')}`);
+          return ok(action.type, `urutan section diubah; sekarang: ${afterSections.map((s) => s.type).join(' → ')}`);
         }
         case 'generate_section_image':
           await generateSectionImage(action.section_id, action.prompt, action.prop_key);
@@ -238,6 +296,16 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
           const result = await applyDeleteLocation(action.location_id);
           return result;
         }
+        case 'add_delivery_zone':
+          return await applyAddDeliveryZone(action.name, action.fee_cents, action.radius_km);
+        case 'update_delivery_zone':
+          return await applyUpdateDeliveryZone(action.zone_id, action.fields);
+        case 'delete_delivery_zone':
+          return await applyDeleteDeliveryZone(action.zone_id);
+        case 'toggle_payment_method':
+          return await applyTogglePaymentMethod(action.method, action.enabled, action.config);
+        case 'request_custom_domain':
+          return await applyRequestCustomDomain(action.domain);
         case 'ready_to_launch':
           await pushMessage({
             role: 'assistant',
@@ -248,13 +316,19 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
           return ok(action.type, 'launch prompt ditampilkan ke user');
       }
     } catch (err) {
-      return fail(
-        (action as { type: string }).type,
-        (err as Error).message ?? 'unknown error',
-        'lihat console untuk stack trace',
-      );
+      return fail((action as { type: string }).type, {
+        error_code: 'ACTION_THREW',
+        error_human: 'Action gagal jalan. Aku coba lagi atau coba pendekatan lain.',
+        debug: {
+          message: (err as Error).message ?? 'unknown error',
+          stack: (err as Error).stack?.split('\n').slice(0, 4).join('\n'),
+        },
+      });
     }
-    return fail((action as { type: string }).type, 'unknown action');
+    return fail((action as { type: string }).type, {
+      error_code: 'UNKNOWN_ACTION',
+      error_human: 'Aku gak kenal action itu.',
+    });
   }
 
   // Look an item up case-insensitively across all categories, then call the
@@ -426,22 +500,17 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
     key: string,
     value: string | number | boolean | null,
   ): Promise<ActionResult> {
-    const ALLOWED = new Set([
-      'multi_branch_mode',
-      'currency_symbol',
-      'locale',
-      'support_whatsapp',
-      'contact_email',
-      'is_active',
-      'heading_font_family',
-      'body_font_family',
-    ]);
+    // Driven by the registry so adding a setting in
+    // src/lib/tenant-settings/registry.ts auto-extends the AI's
+    // mutation surface here without editing this whitelist.
+    const ALLOWED = new Set(settingKeys());
     if (!ALLOWED.has(key)) {
-      return fail(
-        'update_tenant_setting',
-        `key "${key}" tidak diizinkan`,
-        `key valid: ${Array.from(ALLOWED).join(', ')}`,
-      );
+      return fail('update_tenant_setting', {
+        error_code: 'SETTING_NOT_ALLOWED',
+        error_human: 'Setelan itu belum bisa aku ubah dari sini. Coba sebut setelan lain.',
+        suggestion: `valid keys: ${Array.from(ALLOWED).join(', ')}`,
+        debug: { key, value },
+      });
     }
     const isLaunched = !!draft.slug && draft.menu_categories?.some((c) => c.items.length > 0);
     if (!isLaunched) {
@@ -462,7 +531,11 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       }
       return ok('update_tenant_setting', `setelan ${key} diubah ke ${String(value)}`);
     } catch (err) {
-      return fail('update_tenant_setting', (err as Error).message);
+      return fail('update_tenant_setting', {
+        error_code: 'SETTING_PATCH_FAILED',
+        error_human: 'Gagal simpan setelan. Coba lagi sebentar lagi.',
+        debug: { key, value, message: (err as Error).message },
+      });
     }
   }
 
@@ -482,7 +555,11 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       if (!res.ok) throw new Error(body?.error ?? 'Gagal tambah cabang');
       return ok('add_location', `cabang "${name}" ditambahkan`, body?.location);
     } catch (err) {
-      return fail('add_location', (err as Error).message);
+      return fail('add_location', {
+        error_code: 'ADD_LOCATION_FAILED',
+        error_human: `Gagal tambah cabang: ${(err as Error).message}`,
+        debug: { name, message: (err as Error).message },
+      });
     }
   }
 
@@ -500,10 +577,133 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       if (!res.ok) throw new Error(body?.error ?? 'Gagal update cabang');
       return ok(
         'update_location',
-        `cabang ${locationId} diperbarui (${Object.keys(fields).join(', ')})`,
+        `cabang diperbarui (${Object.keys(fields).join(', ')})`,
       );
     } catch (err) {
-      return fail('update_location', (err as Error).message);
+      return fail('update_location', {
+        error_code: 'UPDATE_LOCATION_FAILED',
+        error_human: `Gagal update cabang: ${(err as Error).message}`,
+        debug: { location_id: locationId, message: (err as Error).message },
+      });
+    }
+  }
+
+  async function applyAddDeliveryZone(
+    name: string,
+    feeCents: number,
+    radiusKm?: number,
+  ): Promise<ActionResult> {
+    try {
+      const res = await fetch('/api/admin/delivery-zones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, fee_cents: feeCents, radius_km: radiusKm ?? null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Gagal tambah zone');
+      const fee = (feeCents / 100).toLocaleString('id-ID');
+      return ok(
+        'add_delivery_zone',
+        `zone "${name}" aktif${radiusKm ? `, radius ${radiusKm}km` : ''}, ongkir Rp ${fee}`,
+        body?.zone,
+      );
+    } catch (err) {
+      return fail('add_delivery_zone', {
+        error_code: 'ADD_ZONE_FAILED',
+        error_human: `Gagal tambah zone delivery: ${(err as Error).message}`,
+        debug: { name, message: (err as Error).message },
+      });
+    }
+  }
+
+  async function applyUpdateDeliveryZone(
+    zoneId: string,
+    fields: { name?: string; fee_cents?: number; radius_km?: number | null; is_active?: boolean },
+  ): Promise<ActionResult> {
+    try {
+      const res = await fetch(`/api/admin/delivery-zones/${encodeURIComponent(zoneId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Gagal update zone');
+      return ok('update_delivery_zone', `zone diperbarui`, body?.zone);
+    } catch (err) {
+      return fail('update_delivery_zone', {
+        error_code: 'UPDATE_ZONE_FAILED',
+        error_human: `Gagal update zone delivery: ${(err as Error).message}`,
+        debug: { zone_id: zoneId, message: (err as Error).message },
+      });
+    }
+  }
+
+  async function applyDeleteDeliveryZone(zoneId: string): Promise<ActionResult> {
+    try {
+      const res = await fetch(`/api/admin/delivery-zones/${encodeURIComponent(zoneId)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? 'Gagal hapus zone');
+      }
+      return ok('delete_delivery_zone', 'zone dihapus');
+    } catch (err) {
+      return fail('delete_delivery_zone', {
+        error_code: 'DELETE_ZONE_FAILED',
+        error_human: `Gagal hapus zone delivery: ${(err as Error).message}`,
+        debug: { zone_id: zoneId, message: (err as Error).message },
+      });
+    }
+  }
+
+  async function applyTogglePaymentMethod(
+    method: string,
+    enabled: boolean,
+    config?: Record<string, unknown>,
+  ): Promise<ActionResult> {
+    try {
+      const res = await fetch('/api/admin/payment-methods', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method, is_enabled: enabled, config }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Gagal toggle metode pembayaran');
+      return ok(
+        'toggle_payment_method',
+        `metode ${method} ${enabled ? 'diaktifkan' : 'dinonaktifkan'}`,
+        body?.method,
+      );
+    } catch (err) {
+      return fail('toggle_payment_method', {
+        error_code: 'TOGGLE_PAYMENT_FAILED',
+        error_human: `Gagal toggle pembayaran ${method}: ${(err as Error).message}`,
+        debug: { method, enabled, message: (err as Error).message },
+      });
+    }
+  }
+
+  async function applyRequestCustomDomain(domain: string): Promise<ActionResult> {
+    try {
+      const res = await fetch('/api/admin/custom-domain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? 'Gagal daftar domain');
+      const dns = body?.dns_instructions;
+      const summary = dns
+        ? `domain ${domain} terdaftar; tambahkan CNAME ${dns.cname.host} → ${dns.cname.target} dan TXT ${dns.txt.host}=${dns.txt.value} di DNS provider`
+        : `domain ${domain} terdaftar`;
+      return ok('request_custom_domain', summary, body?.domain);
+    } catch (err) {
+      return fail('request_custom_domain', {
+        error_code: 'REGISTER_DOMAIN_FAILED',
+        error_human: `Gagal daftarkan domain: ${(err as Error).message}`,
+        debug: { domain, message: (err as Error).message },
+      });
     }
   }
 
@@ -516,9 +716,13 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? 'Gagal hapus cabang');
       }
-      return ok('delete_location', `cabang ${locationId} dihapus`);
+      return ok('delete_location', 'cabang dihapus');
     } catch (err) {
-      return fail('delete_location', (err as Error).message);
+      return fail('delete_location', {
+        error_code: 'DELETE_LOCATION_FAILED',
+        error_human: `Gagal hapus cabang: ${(err as Error).message}`,
+        debug: { location_id: locationId, message: (err as Error).message },
+      });
     }
   }
 
@@ -755,11 +959,22 @@ Rewrite the source_jsx to fix this. Use only the allowed primitives (Motion, Ove
         body: JSON.stringify({
           messages: history,
           draft,
-          // Read-back loop: the previous turn's action outcomes go up
-          // with every request so the AI summarizes reality, not its
-          // own optimistic prediction. The /api/ai/chat route formats
-          // these into a system note for Claude.
-          recent_action_results: recentActionResultsRef.current,
+          // Read-back loop: previous turn's outcomes feed the next
+          // system prompt. Strip debug fields client-side — server
+          // never sees them, so a misbehaving prompt can't paste
+          // raw IDs into chat. Only ok/action/summary/error_human/
+          // error_code/suggestion are forwarded.
+          recent_action_results: recentActionResultsRef.current.map((r) =>
+            r.ok
+              ? { ok: true, action: r.action, summary: r.summary }
+              : {
+                  ok: false,
+                  action: r.action,
+                  error_code: r.error_code,
+                  error_human: r.error_human,
+                  suggestion: r.suggestion,
+                },
+          ),
         }),
       });
       const body = await res.json();
@@ -784,18 +999,27 @@ Rewrite the source_jsx to fix this. Use only the allowed primitives (Motion, Ove
 
       // Surface every failure inline so the user sees the truth even
       // if the AI's natural-language reply was optimistic. Multiple
-      // failures collapse into one bubble.
-      const failures = turnResults.filter((r) => !r.ok) as Extract<ActionResult, { ok: false }>[];
+      // failures collapse into one bubble. Only error_human is
+      // surfaced — debug + error_code stay in console.error / Sentry.
+      const failures = turnResults.filter(
+        (r): r is Extract<ActionResult, { ok: false }> => !r.ok,
+      );
       if (failures.length > 0) {
-        const lines = failures.map(
-          (f) => `• ${f.action}: ${f.error}${f.suggestion ? ` (${f.suggestion})` : ''}`,
-        );
+        for (const f of failures) {
+          // eslint-disable-next-line no-console
+          console.error('[chat] action failed', {
+            action: f.action,
+            error_code: f.error_code,
+            debug: f.debug,
+          });
+        }
+        const lines = failures.map((f) => `• ${f.error_human}`);
         await pushMessage({
           role: 'assistant',
           content:
             failures.length === 1
-              ? `Action gagal jalan:\n${lines[0]}\n\nAku coba pendekatan lain — kirim ulang permintaannya atau kasih detail lebih spesifik.`
-              : `Beberapa action gagal jalan:\n${lines.join('\n')}\n\nMaaf udah kasih confirm yang nggak akurat. Kirim ulang permintaannya atau kasih detail lebih spesifik.`,
+              ? lines[0]
+              : `Beberapa permintaan gagal:\n${lines.join('\n')}`,
           kind: 'text',
         });
       }

@@ -142,6 +142,12 @@ export type OnboardingAction =
   | { type: 'add_location'; name: string; address?: string; phone?: string; code?: string }
   | { type: 'update_location'; location_id: string; fields: { name?: string; address?: string; phone?: string; is_active?: boolean } }
   | { type: 'delete_location'; location_id: string }
+  // Phase 5+ batch — settings actions backed by registry / new tables.
+  | { type: 'add_delivery_zone'; name: string; fee_cents: number; radius_km?: number }
+  | { type: 'update_delivery_zone'; zone_id: string; fields: { name?: string; fee_cents?: number; radius_km?: number | null; is_active?: boolean } }
+  | { type: 'delete_delivery_zone'; zone_id: string }
+  | { type: 'toggle_payment_method'; method: string; enabled: boolean; config?: Record<string, unknown> }
+  | { type: 'request_custom_domain'; domain: string }
   | { type: 'ready_to_launch' };
 
 // Result of every action the chat panel applies. Every branch in
@@ -150,6 +156,15 @@ export type OnboardingAction =
 // or silently fail. The next /api/ai/chat turn passes the recent
 // results back via lastActionResults so the AI summarizes reality
 // instead of hallucinating.
+//
+// Failure fields split into two layers:
+//   • error_human / suggestion → user-facing copy (AI may quote)
+//   • error_code / debug       → log-only, never quoted to user
+//
+// The AI is told (via prompt) to surface error_human and never
+// copy debug fields, error codes, or raw IDs into chat. The eval
+// harness regexes for UUID-shaped strings in replies as a final
+// gate.
 export type ActionResult =
   | {
       ok: true;
@@ -160,10 +175,18 @@ export type ActionResult =
   | {
       ok: false;
       action: string;
-      error: string;
-      // Optional next-step hint for the AI ("user may need to refresh",
-      // "section_id appears stale", etc).
+      // Stable machine code so logs / Sentry can group failures.
+      error_code: string;
+      // User-facing Indonesian copy. May be safely quoted in chat.
+      error_human: string;
+      // Optional next-step hint for the AI.
       suggestion?: string;
+      // Internal-only — IDs, raw error bodies, stack hints. NEVER
+      // surfaced to the user. Used by Sentry + console logs.
+      debug?: Record<string, unknown>;
+      // Back-compat — previous code read `error`. Kept as alias of
+      // error_human so older call sites still type-check.
+      error: string;
     };
 
 // Whitelist of tenant settings the AI is allowed to change via
