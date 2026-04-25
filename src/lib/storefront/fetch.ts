@@ -49,6 +49,9 @@ export async function getStorefrontSections(
 // carries a verified preview_token so we already know the requester
 // owns this draft.
 //
+// `draftId` is the owner's user_id — onboarding_drafts uses user_id
+// as its primary key (one draft per user), there's no separate id.
+//
 // Custom sections in the draft carry their codegen fields nested under
 // props (the onboarding store keeps the same shape), so we don't need
 // the join-flatten dance the published-source variant does.
@@ -58,8 +61,8 @@ export async function getStorefrontSectionsFromDraft(
   const sb = createServiceClient();
   const { data, error } = await sb
     .from('onboarding_drafts')
-    .select('id, draft')
-    .eq('id', draftId)
+    .select('user_id, draft')
+    .eq('user_id', draftId)
     .maybeSingle();
   if (error || !data) return null;
   const draft = (data.draft ?? {}) as TenantDraft;

@@ -86,18 +86,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     }
 
-    // Resolve the draft this user is editing.
-    const { data: draft } = await service
+    // onboarding_drafts.user_id is the primary key (one draft per
+    // user). We use that uuid as the draft identifier in the token —
+    // there's no separate `id` column to bind to. Auto-seed an empty
+    // row when missing so the very first /setup load (and any post-
+    // reset state) always has a draft for the iframe to render. The
+    // storefront falls back to live data when sections are empty.
+    const { error: upsertErr } = await service
       .from('onboarding_drafts')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (!draft) {
-      return NextResponse.json({ error: 'no draft' }, { status: 404 });
+      .upsert(
+        { user_id: user.id },
+        { onConflict: 'user_id', ignoreDuplicates: true },
+      );
+    if (upsertErr) {
+      // Non-fatal — if the row already existed under a race, the
+      // upsert is a no-op. Surface anything else as a 500.
+      console.error('[preview-token] draft upsert failed', upsertErr);
     }
 
+    const draftId = user.id;
     const { token, expiresAt } = signPreviewToken({
-      draftId: draft.id as string,
+      draftId,
       ownerUserId: user.id,
       tenantSlug: slug,
     });
@@ -105,7 +114,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       token,
       expires_at: expiresAt,
-      preview_url: tenantPreviewUrl(slug, draft.id as string, token),
+      preview_url: tenantPreviewUrl(slug, draftId, token),
     });
   } catch (err) {
     return errorResponse(err);

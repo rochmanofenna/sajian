@@ -347,8 +347,25 @@ export default function SetupPage() {
               referrerPolicy="no-referrer"
             />
           )}
+          {!previewSrc && !previewError && !draft?.slug && (
+            <div className="ob-device__empty">
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              <span>
+                Preview muncul setelah kamu kasih nama toko di chat —
+                slug-nya bakal jadi alamat preview-nya.
+              </span>
+            </div>
+          )}
+          {!previewSrc && !previewError && draft?.slug && (
+            <div className="ob-device__empty">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              <span>Menyiapkan preview…</span>
+            </div>
+          )}
           {previewError && (
-            <div className="ob-device__error">{previewError}</div>
+            <div className="ob-device__error">
+              Preview belum siap: {previewError}. Coba refresh sebentar lagi.
+            </div>
           )}
         </div>
       </section>
