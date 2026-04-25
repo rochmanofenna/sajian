@@ -8,7 +8,12 @@
 -- prioritize features by real demand.
 
 create table if not exists public.roadmap_requests (
-  id uuid primary key default uuid_generate_v4(),
+  -- gen_random_uuid() is built into Postgres 13+ via pgcrypto, which
+  -- Supabase enables by default. uuid_generate_v4() resolves
+  -- inconsistently on Supabase Cloud (the extension lives in the
+  -- `extensions` schema, not on the default search_path under the
+  -- migration runner), so prefer gen_random_uuid for new tables.
+  id uuid primary key default gen_random_uuid(),
   tenant_id uuid references public.tenants(id) on delete cascade,
   -- The owner / operator who asked. May be null when the AI
   -- categorizes a request before login state is known (e.g.
