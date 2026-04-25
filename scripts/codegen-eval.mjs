@@ -47,6 +47,36 @@ const PROMPTS = [
   'hide section about sementara',
   'ganti warna primer jadi biru laut',
   'hero dengan video latar kalau ada, kalau nggak pakai gambar',
+  // Phase 4 / Phase 5 adversarial spatial prompts — all should land
+  // an action without a "mau aku buatin?" stall.
+  'pindahkan logo dan nama toko ke pojok kiri atas',
+  'taruh tombol pesan di tengah halaman',
+  'logo melayang di pojok kanan atas',
+  'overlay teks "Selamat Datang" di atas foto hero',
+  'tombol whatsapp floating di kanan bawah, jangan ketutup tombol pesan',
+  'pindahkan foto about ke kiri, teksnya ke kanan',
+  'badge BARU di pojok kanan atas hero',
+  'tombol pesan agak turun dikit, jangan tabrakan dengan headline',
+  'logo, nama, tagline semua di tengah, ditumpuk vertikal',
+  'taruh banner promo paling atas, di atas hero',
+];
+
+// The AI must never use these phrases. They were the "I can't do that"
+// crutches that got users stuck on Phase 3. The harness flags any
+// response containing them so prompt regressions are caught early.
+const FORBIDDEN_PHRASES = [
+  'dikontrol template',
+  'dikontrol otomatis sama template',
+  'nggak bisa digeser',
+  'tidak bisa digeser',
+  'tidak bisa diubah dari sini',
+  'posisinya tetap',
+  'posisinya fixed',
+  'belum bisa diatur manual',
+  'pengaturan tombol belum bisa',
+  'mau aku buatin?',
+  'apakah kamu mau aku',
+  'maaf belum bisa',
 ];
 
 function parseActions(text) {
@@ -76,7 +106,19 @@ async function askChat(prompt) {
     }),
   });
   const body = await res.json();
-  return { status: res.status, actions: body.actions ?? parseActions(body.message ?? ''), message: body.message };
+  const message = body.message ?? '';
+  return {
+    status: res.status,
+    actions: body.actions ?? parseActions(message),
+    message,
+    forbidden: scanForbidden(message),
+  };
+}
+
+function scanForbidden(text) {
+  if (!text || typeof text !== 'string') return [];
+  const lower = text.toLowerCase();
+  return FORBIDDEN_PHRASES.filter((p) => lower.includes(p.toLowerCase()));
 }
 
 async function dryCompile(sourceJsx) {
@@ -136,11 +178,17 @@ async function main() {
   for (let i = 0; i < PROMPTS.length; i += 1) {
     const prompt = PROMPTS[i];
     const attemptStart = Date.now();
-    let outcome = { prompt, actions: [], ok: false, note: '' };
+    let outcome = { prompt, actions: [], ok: false, note: '', forbidden: [] };
     try {
-      const { status, actions } = await askChat(prompt);
+      const { status, actions, forbidden } = await askChat(prompt);
       outcome.actions = actions.map((a) => a.type ?? 'unknown');
-      outcome.ok = status < 400 && actions.length > 0;
+      outcome.forbidden = forbidden;
+      // A prompt is considered green ONLY if the AI emitted at least
+      // one action AND used no forbidden phrases. A response that
+      // says "mau aku buatin?" but also emits the action still counts
+      // as a regression — the language reads as gating, even if the
+      // action eventually happens.
+      outcome.ok = status < 400 && actions.length > 0 && forbidden.length === 0;
       const customAction = actions.find(
         (a) => a.type === 'add_custom_section' || a.type === 'update_custom_section',
       );
@@ -167,23 +215,25 @@ async function main() {
   ).length;
   const compileAttempted = results.filter((r) => r.compile).length;
   const compileOk = results.filter((r) => r.compile?.ok === true).length;
+  const forbiddenHits = results.filter((r) => r.forbidden && r.forbidden.length > 0);
 
   const lines = [
     '# Codegen eval scorecard',
     '',
     `- Tenant: ${flagState.tenant_id}`,
     `- Prompts run: ${results.length}`,
-    `- First-attempt action emitted: ${firstAttemptOk}/${results.length} (${Math.round((firstAttemptOk / results.length) * 100)}%)`,
+    `- First-attempt action emitted (no forbidden phrase): ${firstAttemptOk}/${results.length} (${Math.round((firstAttemptOk / results.length) * 100)}%)`,
     `- Custom-section attempts: ${customAttempted}/${results.length}`,
     compileAttempted > 0
       ? `- Dry-run compile success: ${compileOk}/${compileAttempted} (${Math.round((compileOk / compileAttempted) * 100)}%)`
       : '- Dry-run compile success: n/a',
+    `- Forbidden-phrase regressions: ${forbiddenHits.length}/${results.length}`,
     `- Total wall time: ${total} ms`,
     '',
     '## Per-prompt outcomes',
     '',
-    '| # | Prompt | Actions | source_jsx | Compile | Time |',
-    '|---|---|---|---|---|---|',
+    '| # | Prompt | Actions | source_jsx | Compile | Forbidden | Time |',
+    '|---|---|---|---|---|---|---|',
   ];
   for (let i = 0; i < results.length; i += 1) {
     const r = results[i];
@@ -194,12 +244,23 @@ async function main() {
         ? `ok · ${r.compile.path ?? ''}${r.compile.compile_ms ? ` · ${r.compile.compile_ms}ms` : ''}`
         : `fail${r.compile.stage ? ` · ${r.compile.stage}` : ''}`
       : '-';
+    const forbidden = r.forbidden?.length ? `⚠ ${r.forbidden.join('; ')}` : '-';
     const short = r.prompt.length > 60 ? `${r.prompt.slice(0, 60)}…` : r.prompt;
-    lines.push(`| ${i + 1} | ${short} | ${actions} | ${bytes} | ${compile} | ${r.ms} ms |`);
+    lines.push(`| ${i + 1} | ${short} | ${actions} | ${bytes} | ${compile} | ${forbidden} | ${r.ms} ms |`);
+  }
+  if (forbiddenHits.length > 0) {
+    lines.push('', '## Regressions detected', '');
+    for (const r of forbiddenHits) {
+      lines.push(`- "${r.prompt}" → ${r.forbidden.join(', ')}`);
+    }
   }
   const md = lines.join('\n');
   writeFileSync(new URL('../docs/CODEGEN_EVAL_RESULTS.md', import.meta.url), md);
   console.log(md);
+  if (forbiddenHits.length > 0) {
+    console.error(`\n⚠ ${forbiddenHits.length} prompt(s) hit forbidden phrases — fix prompt before rolling out.`);
+    process.exitCode = 2;
+  }
 }
 
 main().catch((err) => {
