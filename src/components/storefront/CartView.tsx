@@ -119,7 +119,9 @@ export function CartView({ tenant }: { tenant: PublicTenant }) {
         Lanjut ke Pembayaran
       </Link>
       {!branchCode && (
-        <p className="mt-2 text-xs text-center text-zinc-500">Pilih cabang dulu dari halaman utama.</p>
+        <p className="mt-2 text-xs text-center text-zinc-500">
+          Buka <Link href="/menu" className="underline">menu</Link> dulu untuk pilih cabang.
+        </p>
       )}
       </div>
     </>

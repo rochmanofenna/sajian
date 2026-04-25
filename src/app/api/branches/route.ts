@@ -28,7 +28,10 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const lat = url.searchParams.get('lat');
     const lng = url.searchParams.get('lng');
-    if (!lat || !lng) return badRequest('lat and lng are required');
+    // lat/lng are now OPTIONAL — when absent we still return the full
+    // active-branch list so single-branch tenants resolve their only
+    // branch without geolocation. ESB enrichment (distance / isOpen)
+    // gracefully degrades when the coords are missing.
 
     const tenant = await resolveTenant();
     const supabase = createServiceClient();
@@ -57,14 +60,18 @@ export async function GET(req: Request) {
     }
 
     // ESB path: enrich with isOpen + distance from ESB's branch list.
+    // Skip the call when coords are missing — distance only matters for
+    // multi-branch tenants and a single-branch tenant doesn't need it.
     const esb = new ESBClient(tenant);
     let esbList: ESBBranchesEnvelope['data'] = [];
-    try {
-      const resp = (await esb.getBranches(lat, lng)) as ESBBranchesEnvelope | ESBBranchesEnvelope['data'];
-      esbList = Array.isArray(resp) ? resp : resp?.data ?? [];
-    } catch (err) {
-      // ESB fallback — still return rows, just without live status.
-      console.warn('[api/branches] ESB getBranches failed, returning Supabase rows only:', err);
+    if (lat && lng) {
+      try {
+        const resp = (await esb.getBranches(lat, lng)) as ESBBranchesEnvelope | ESBBranchesEnvelope['data'];
+        esbList = Array.isArray(resp) ? resp : resp?.data ?? [];
+      } catch (err) {
+        // ESB fallback — still return rows, just without live status.
+        console.warn('[api/branches] ESB getBranches failed, returning Supabase rows only:', err);
+      }
     }
 
     const esbByCode = new Map((esbList ?? []).map((b) => [b.branchCode ?? '', b]));

@@ -24,6 +24,13 @@ export interface UseMenuData {
   orderType: OrderType | null;
   setOrderType: (v: OrderType) => void;
   branchCode: string | null;
+  // True while we're still figuring out which branch to use
+  // (auto-pick API call in flight). MenuView shows a spinner instead
+  // of the "pilih cabang" gate during this window.
+  resolvingBranch: boolean;
+  // Total active branches. When > 1 and no branchCode yet, MenuView
+  // surfaces the picker. When = 0, "Belum ada cabang aktif".
+  branchCount: number | null;
   onAdd: (item: ESBMenuItem) => void;
 }
 
@@ -31,15 +38,47 @@ export function useMenuData(tenant: PublicTenant): UseMenuData {
   const branchCode = useCart((s) => s.branchCode);
   const orderType = useCart((s) => s.orderType);
   const setOrderType = useCart((s) => s.setOrderType);
+  const setBranch = useCart((s) => s.setBranch);
   const addItem = useCart((s) => s.addItem);
 
   const [menu, setMenu] = useState<MenuResponse['menu'] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [branchCount, setBranchCount] = useState<number | null>(null);
+  const [resolvingBranch, setResolvingBranch] = useState(true);
 
   useEffect(() => {
     if (!orderType) setOrderType('takeaway');
   }, [orderType, setOrderType]);
+
+  // Auto-resolve branch on /menu so single-branch tenants don't get
+  // gated behind a "Pilih cabang dulu" wall. Calls /api/branches with
+  // no lat/lng (returns the full active list). When exactly one
+  // branch is active we pin it into the cart store immediately.
+  useEffect(() => {
+    if (branchCode) {
+      setResolvingBranch(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/branches', { cache: 'no-store' });
+        const body = await res.json();
+        const list = (body?.branches ?? []) as Array<{ code: string; name: string }>;
+        if (cancelled) return;
+        setBranchCount(list.length);
+        if (list.length === 1) setBranch(list[0].code);
+      } catch (err) {
+        if (!cancelled) console.error('[useMenuData] auto-pick branch failed', err);
+      } finally {
+        if (!cancelled) setResolvingBranch(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchCode, setBranch]);
 
   useEffect(() => {
     if (!branchCode || !orderType) return;
@@ -105,6 +144,8 @@ export function useMenuData(tenant: PublicTenant): UseMenuData {
     orderType: orderType ?? null,
     setOrderType,
     branchCode: branchCode ?? null,
+    resolvingBranch,
+    branchCount,
     onAdd,
   };
 }
