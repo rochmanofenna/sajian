@@ -173,5 +173,7 @@ export type TenantSettingKey =
   | 'currency_symbol'
   | 'locale'
   | 'support_whatsapp'
-  | 'support_email'
-  | 'is_active';
+  | 'contact_email'
+  | 'is_active'
+  | 'heading_font_family'
+  | 'body_font_family';

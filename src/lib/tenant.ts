@@ -76,6 +76,13 @@ export interface Tenant {
   owner_name: string | null;
   theme_template: ThemeTemplate;
   hero_image_url: string | null;
+  // Typography overrides. Null = template default. Either field
+  // accepts a Google Fonts family name; the root layout fetches the
+  // CSS link dynamically and exposes them as --font-heading /
+  // --font-body so storefront templates can pick them up.
+  heading_font_family: string | null;
+  body_font_family: string | null;
+  multi_branch_mode: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -109,6 +116,9 @@ export function toPublicTenant(t: Tenant): PublicTenant {
     is_active: t.is_active,
     theme_template: t.theme_template,
     hero_image_url: t.hero_image_url,
+    heading_font_family: t.heading_font_family,
+    body_font_family: t.body_font_family,
+    multi_branch_mode: t.multi_branch_mode,
     created_at: t.created_at,
     updated_at: t.updated_at,
   };

@@ -13,25 +13,31 @@
 
 /* ── Template-level font selection on <html data-template="..."> ──────── */
 
+/* Per-tenant font overrides via --font-heading / --font-body win
+   when the layout sets them inline on <html>. Template defaults
+   apply when those vars are unset. The order matters: each template
+   rule must reference --font-heading / --font-body in its own
+   declaration so an empty inline value falls back to the template's
+   chosen face. */
 html[data-template='kedai'] {
-  --t-display: 'Fraunces', 'Times New Roman', serif;
-  --t-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --t-display: var(--font-heading, 'Fraunces'), 'Times New Roman', serif;
+  --t-body: var(--font-body, 'Plus Jakarta Sans'), system-ui, sans-serif;
 }
 html[data-template='warung'] {
-  --t-display: 'Plus Jakarta Sans', system-ui, sans-serif;
-  --t-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --t-display: var(--font-heading, 'Plus Jakarta Sans'), system-ui, sans-serif;
+  --t-body: var(--font-body, 'Plus Jakarta Sans'), system-ui, sans-serif;
 }
 html[data-template='modern'] {
-  --t-display: 'Plus Jakarta Sans', system-ui, sans-serif;
-  --t-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --t-display: var(--font-heading, 'Plus Jakarta Sans'), system-ui, sans-serif;
+  --t-body: var(--font-body, 'Plus Jakarta Sans'), system-ui, sans-serif;
 }
 html[data-template='food-hall'] {
-  --t-display: 'Plus Jakarta Sans', system-ui, sans-serif;
-  --t-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --t-display: var(--font-heading, 'Plus Jakarta Sans'), system-ui, sans-serif;
+  --t-body: var(--font-body, 'Plus Jakarta Sans'), system-ui, sans-serif;
 }
 html[data-template='classic'] {
-  --t-display: 'Fraunces', 'Times New Roman', serif;
-  --t-body: 'Fraunces', 'Times New Roman', serif;
+  --t-display: var(--font-heading, 'Fraunces'), 'Times New Roman', serif;
+  --t-body: var(--font-body, 'Fraunces'), 'Times New Roman', serif;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

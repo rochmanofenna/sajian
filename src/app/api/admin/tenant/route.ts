@@ -50,7 +50,12 @@ const patchSchema = z
     currency_symbol: z.string().min(1).max(8).optional(),
     locale: z.string().min(2).max(16).optional(),
     support_whatsapp: z.string().max(32).nullable().optional(),
-    support_email: z.string().email().max(240).nullable().optional(),
+    contact_email: z.string().email().max(240).nullable().optional(),
+    // Typography. Null reverts to the template default. The font name
+    // must match a Google Fonts family — the storefront layout loads
+    // it dynamically via the Google Fonts CSS endpoint.
+    heading_font_family: z.string().trim().min(1).max(80).nullable().optional(),
+    body_font_family: z.string().trim().min(1).max(80).nullable().optional(),
   })
   .strict();
 

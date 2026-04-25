@@ -431,8 +431,10 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       'currency_symbol',
       'locale',
       'support_whatsapp',
-      'support_email',
+      'contact_email',
       'is_active',
+      'heading_font_family',
+      'body_font_family',
     ]);
     if (!ALLOWED.has(key)) {
       return fail(

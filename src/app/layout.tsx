@@ -64,6 +64,36 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   const template = tenant?.theme_template ?? 'modern';
 
+  // Per-tenant typography. Owners pick any Google Fonts family via
+  // chat (update_tenant_setting key=heading_font_family). When set,
+  // we emit a <link> to the Google Fonts CSS endpoint and expose
+  // --font-heading / --font-body CSS vars. Null falls back to the
+  // template default (Plus Jakarta Sans / Fraunces). The list of
+  // weights stays generous (300..800) since heading + body cover
+  // most cases without two separate roundtrips.
+  const headingFamily = tenant?.heading_font_family ?? null;
+  const bodyFamily = tenant?.body_font_family ?? null;
+  const fontFamilies = Array.from(
+    new Set([headingFamily, bodyFamily].filter((f): f is string => !!f && f.trim().length > 0)),
+  );
+  const googleFontsHref =
+    fontFamilies.length > 0
+      ? `https://fonts.googleapis.com/css2?${fontFamilies
+          .map(
+            (f) => `family=${encodeURIComponent(f.trim())}:wght@300;400;500;600;700;800`,
+          )
+          .join('&')}&display=swap`
+      : null;
+
+  if (headingFamily) {
+    // Single bare family — the template tokens chain in their own
+    // template-specific fallback if the Google Font fails to load.
+    (themeStyle as Record<string, string>)['--font-heading'] = `"${headingFamily}"`;
+  }
+  if (bodyFamily) {
+    (themeStyle as Record<string, string>)['--font-body'] = `"${bodyFamily}"`;
+  }
+
   return (
     <html
       lang={tenant?.locale ?? 'id-ID'}
@@ -71,7 +101,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       style={themeStyle}
       data-template={template}
     >
-      <body className="min-h-full flex flex-col bg-[var(--color-background)] text-[var(--color-dark)] font-sans">
+      {googleFontsHref && (
+        <head>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link rel="stylesheet" href={googleFontsHref} />
+        </head>
+      )}
+      <body
+        className="min-h-full flex flex-col bg-[var(--color-background)] text-[var(--color-dark)] font-sans"
+        style={
+          bodyFamily
+            ? { fontFamily: `"${bodyFamily}", var(--font-sans), system-ui, sans-serif` }
+            : undefined
+        }
+      >
         {tenant ? <TenantProvider tenant={toPublicTenant(tenant)}>{children}</TenantProvider> : children}
       </body>
     </html>
