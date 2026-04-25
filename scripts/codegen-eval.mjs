@@ -72,6 +72,10 @@ const PROMPTS = [
   'tambahkan section pricing 3 paket',
   'tambahkan section timeline perjalanan toko',
   'tambahkan section comparison sebelum/sesudah',
+  // Phase 5 hardening — typography is YOUR job, not the team's.
+  'ganti font ke Poppins',
+  'ganti heading ke Futura body ke Inter',
+  'kombinasi Fraunces dengan Plus Jakarta Sans untuk heading dan body',
 ];
 
 // The AI must never use these phrases. They were the "I can't do that"
@@ -94,9 +98,18 @@ const FORBIDDEN_PHRASES = [
   'tim bisa',
   'tim akan',
   'aku catat requestnya buat tim',
+  'aku catat request kamu',
   'lanjut edit bagian lain dulu',
   'mau lanjut edit bagian lain dulu',
   'level platform',
+  'level tema',
+  'level template',
+  'tim teknis',
+  'diubah oleh tim',
+  'perlu diubah oleh',
+  'ada perubahan lain yang bisa aku bantu sekarang',
+  'ganti font belum bisa',
+  'font belum bisa',
   // Phase 5 hardening — codegen refusal regression patterns.
   'belum tersedia',
   'tidak tersedia',
