@@ -45,3 +45,4 @@ next-env.d.ts
 # the working copy is local-only.
 supabase/seed/001_mindiology.sql
 docs/
+supabase/.temp/
