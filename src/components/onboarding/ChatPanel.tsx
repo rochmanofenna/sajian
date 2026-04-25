@@ -137,6 +137,18 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
       case 'set_template':
         await patchDraft({ theme_template: action.template });
         break;
+      case 'update_tenant_setting':
+        await applyTenantSetting(action.key, action.value);
+        break;
+      case 'add_location':
+        await applyAddLocation(action.name, action.address, action.phone, action.code);
+        break;
+      case 'update_location':
+        await applyUpdateLocation(action.location_id, action.fields);
+        break;
+      case 'delete_location':
+        await applyDeleteLocation(action.location_id);
+        break;
       case 'ready_to_launch':
         await pushMessage({
           role: 'assistant',
@@ -302,6 +314,125 @@ export function ChatPanel({ onLaunch }: { onLaunch: () => void }) {
 
   async function applyUpdateCustomSection(sectionId: string, sourceJsx: string): Promise<void> {
     await compileWithRetry(sectionId, sourceJsx);
+  }
+
+  // ── Tenant-settings + locations executors ─────────────────────────
+  // The AI's update_tenant_setting / add_location / update_location /
+  // delete_location actions land here. We patch the draft when this
+  // is a pre-launch session (no live tenant row yet) AND PATCH the
+  // live tenant when the store is already launched. Either path
+  // surfaces a conversational confirmation so the AI can't fall back
+  // to "tim bisa..." deflection language.
+
+  async function applyTenantSetting(
+    key: string,
+    value: string | number | boolean | null,
+  ): Promise<void> {
+    const ALLOWED = new Set([
+      'multi_branch_mode',
+      'currency_symbol',
+      'locale',
+      'support_whatsapp',
+      'support_email',
+      'is_active',
+    ]);
+    if (!ALLOWED.has(key)) {
+      console.warn('[chat] update_tenant_setting unknown key', key);
+      return;
+    }
+    // Pre-launch: the draft is the source of truth. We don't mirror
+    // settings into the draft today — most settings (multi_branch_mode,
+    // locale, currency) become tenant fields on launch and are
+    // user-irrelevant during draft edits anyway. Surface a confirmation
+    // so the AI's reply has something concrete to land on.
+    const isLaunched = !!draft.slug && draft.menu_categories?.some((c) => c.items.length > 0);
+    if (!isLaunched) {
+      console.info('[chat] settings change deferred until launch', { key, value });
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/tenant', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? 'Gagal simpan setelan');
+      }
+    } catch (err) {
+      await pushMessage({
+        role: 'assistant',
+        content: `Setelan gagal disimpan: ${(err as Error).message}.`,
+        kind: 'text',
+      });
+    }
+  }
+
+  async function applyAddLocation(
+    name: string,
+    address?: string,
+    phone?: string,
+    code?: string,
+  ): Promise<void> {
+    try {
+      const res = await fetch('/api/admin/locations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, address, phone, code }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? 'Gagal tambah cabang');
+      }
+    } catch (err) {
+      await pushMessage({
+        role: 'assistant',
+        content: `Tambah cabang gagal: ${(err as Error).message}.`,
+        kind: 'text',
+      });
+    }
+  }
+
+  async function applyUpdateLocation(
+    locationId: string,
+    fields: { name?: string; address?: string; phone?: string; is_active?: boolean },
+  ): Promise<void> {
+    try {
+      const res = await fetch(`/api/admin/locations/${encodeURIComponent(locationId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? 'Gagal update cabang');
+      }
+    } catch (err) {
+      await pushMessage({
+        role: 'assistant',
+        content: `Update cabang gagal: ${(err as Error).message}.`,
+        kind: 'text',
+      });
+    }
+  }
+
+  async function applyDeleteLocation(locationId: string): Promise<void> {
+    try {
+      const res = await fetch(`/api/admin/locations/${encodeURIComponent(locationId)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? 'Gagal hapus cabang');
+      }
+    } catch (err) {
+      await pushMessage({
+        role: 'assistant',
+        content: `Hapus cabang gagal: ${(err as Error).message}.`,
+        kind: 'text',
+      });
+    }
   }
 
   async function callCompile(

@@ -132,4 +132,24 @@ export type OnboardingAction =
   | { type: 'generate_hero_image'; prompt?: string }
   | { type: 'add_custom_section'; source_jsx: string; position?: 'start' | 'end' | `after:${string}` | `before:${string}` }
   | { type: 'update_custom_section'; section_id: string; source_jsx: string }
+  // Tenant-level settings the AI can change directly. Whitelisted keys
+  // only — anything outside the whitelist is rejected by the executor.
+  | { type: 'update_tenant_setting'; key: TenantSettingKey; value: string | number | boolean | null }
+  // Branch / location management. add/update/delete operate on rows in
+  // public.branches. AI uses these so "tambahin cabang Sudirman" or
+  // "hilangkan pilih cabang" actually mutates state instead of being
+  // deflected to "the team."
+  | { type: 'add_location'; name: string; address?: string; phone?: string; code?: string }
+  | { type: 'update_location'; location_id: string; fields: { name?: string; address?: string; phone?: string; is_active?: boolean } }
+  | { type: 'delete_location'; location_id: string }
   | { type: 'ready_to_launch' };
+
+// Whitelist of tenant settings the AI is allowed to change via
+// update_tenant_setting. Anything else lives in /admin or migrations.
+export type TenantSettingKey =
+  | 'multi_branch_mode'
+  | 'currency_symbol'
+  | 'locale'
+  | 'support_whatsapp'
+  | 'support_email'
+  | 'is_active';

@@ -43,6 +43,14 @@ const patchSchema = z
     // Owners can toggle their store on/off from the inactive panel. Soft-
     // delete still lives at /api/admin/tenant/deactivate.
     is_active: z.boolean().optional(),
+    // AI-editable settings (Phase 5 settings actions). Whitelisted
+    // here so update_tenant_setting can route through the same PATCH
+    // endpoint owners use from /admin → Store Settings.
+    multi_branch_mode: z.boolean().nullable().optional(),
+    currency_symbol: z.string().min(1).max(8).optional(),
+    locale: z.string().min(2).max(16).optional(),
+    support_whatsapp: z.string().max(32).nullable().optional(),
+    support_email: z.string().email().max(240).nullable().optional(),
   })
   .strict();
 
