@@ -102,6 +102,34 @@ src/
     └── seed/                # tenant + branch seeds
 ```
 
+## CI status — `scripts/ci-status.sh`
+
+Single command that prints the four things you want to know before merging or deploying. Runs in ~3 seconds, exits 0 always (informational, never gates anything).
+
+```bash
+bash scripts/ci-status.sh                # status for current HEAD
+bash scripts/ci-status.sh <pr-number>    # status for a specific PR
+```
+
+The four blocks:
+
+- **HEAD** — local git: short SHA, commit subject, branch, time + author. Tells you which commit you're about to ship.
+- **GITHUB CHECKS** — calls `gh pr checks <pr>` if there's an open PR for the current branch, else `gh run list --limit 5` for the most recent workflow runs on that branch. Statuses are `pass | fail | pending`. Three required checks today: `typecheck`, `vitest`, `build`. All three green = code-quality gate passed.
+- **VERCEL** — last 10 deployments for the linked project. Look for the topmost `https://sajian-...vercel.app` URL — that's the freshest deploy. Click through to confirm it routes correctly. (Vercel CLI doesn't expose deploy state in `list` output cleanly; use `vercel inspect <url>` for the full state if a deploy looks suspicious.)
+- **SUPABASE MIGRATIONS** — `supabase migration list` showing local-vs-remote diff. Both columns full = in sync. A row with empty `Remote` column = local migration not yet pushed; run `supabase db push` before deploying or the new code will hit a schema that doesn't exist yet.
+
+When to run it:
+- Right before merging a PR (paranoia check that all checks really did pass)
+- Right after pushing a manual deploy (confirms Vercel picked it up)
+- Anytime someone says "is X live?" — three seconds, all four answers
+
+Required CLIs (one-time setup):
+- `gh` (GitHub CLI, `pacman -S github-cli` on Arch / `brew install gh` on macOS) — `gh auth login` once
+- `vercel` — already used for deploys; `vercel login` once
+- `supabase` — already used for migrations; `supabase login` + `supabase link --project-ref cejsweidaxtavpuhsswv` once
+
+If you have multiple `gh` binaries on PATH (e.g. capseal's venv shadows the system one), the script explicitly invokes `/usr/bin/gh` to avoid the wrong tool.
+
 ## Phase 1 handoff checklist
 
 - [ ] Create Supabase project (Singapore), copy URL + anon + service_role into `.env.local`.
