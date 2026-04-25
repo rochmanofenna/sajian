@@ -133,6 +133,28 @@ export async function proxy(request: NextRequest) {
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('Origin-Agent-Cluster', '?1');
+
+  // Promote ?preview_token= into a cookie so subsequent in-iframe
+  // navigation (clicks to /menu, /cart, /checkout) keeps preview mode
+  // without the parent rewriting every link. We CAN'T do this from
+  // the page server component — Next.js disallows cookie mutation
+  // outside route handlers / server actions / middleware. The token
+  // is set as-is; the page server still verifies it via
+  // verifyPreviewToken() before rendering draft state, so a forged
+  // value just yields the live page (which is what we'd render
+  // anyway).
+  if (context === 'storefront') {
+    const incoming = request.nextUrl.searchParams.get('preview_token');
+    if (incoming) {
+      response.cookies.set('sajian_preview_token', incoming, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: !host.includes('localhost'),
+        path: '/',
+        maxAge: 15 * 60,
+      });
+    }
+  }
   // X-Frame-Options doesn't support allow-from, so we can't express
   // "frame by sajian.app only" here — CSP frame-ancestors does that
   // precisely. We OMIT XFO on the preview origin AND on the storefront

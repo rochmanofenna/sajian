@@ -38,21 +38,3 @@ export async function getPreviewMode(
     payload,
   };
 }
-
-// Reads a preview token off a Next.js page's searchParams snapshot.
-// Used by the storefront home page's first-load handler to promote a
-// query-param token into a cookie so subsequent in-iframe navigation
-// stays in preview mode.
-export function readPreviewTokenFromSearchParams(
-  search: Record<string, string | string[] | undefined> | null | undefined,
-  tenantSlug: string | null,
-): { token: string; payload: PreviewTokenPayload } | null {
-  if (!search) return null;
-  const raw = search['preview_token'];
-  const token = Array.isArray(raw) ? raw[0] : raw;
-  if (!token) return null;
-  const payload = verifyPreviewToken(token);
-  if (!payload) return null;
-  if (tenantSlug && payload.tenant_slug !== tenantSlug) return null;
-  return { token, payload };
-}
