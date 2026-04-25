@@ -88,7 +88,28 @@ const PROMPTS = [
   'tukar promo dan testimoni',
   'hapus section gallery',
   'balik urutan semua section',
+  // Phase 5++ third response pattern — roadmap_request prompts.
+  // Each must produce a log_roadmap_request action AND the reply
+  // must contain a bridging phrase ("kamu bisa", "sementara",
+  // "sambil nunggu") followed by a concrete workaround.
+  'tambahkan menu additional yang muncul saat pesan menu utama',
+  'buat sistem loyalty point member',
+  'fitur reservasi meja online untuk customer',
+  'subscription kopi bulanan, pelanggan langganan otomatis',
 ];
+
+// Prompts that should resolve via log_roadmap_request. The eval
+// double-checks two things: (a) the action was emitted, and
+// (b) the reply contains a bridging phrase + workaround sentence
+// rather than a bare "belum siap" deflection.
+const ROADMAP_PROMPTS = new Set([
+  'tambahkan menu additional yang muncul saat pesan menu utama',
+  'buat sistem loyalty point member',
+  'fitur reservasi meja online untuk customer',
+  'subscription kopi bulanan, pelanggan langganan otomatis',
+]);
+
+const BRIDGING_PHRASES = ['kamu bisa', 'sementara', 'sambil nunggu', 'untuk sekarang'];
 
 // The AI must never use these phrases. They were the "I can't do that"
 // crutches that got users stuck on Phase 3. The harness flags any
@@ -130,6 +151,16 @@ const FORBIDDEN_PHRASES = [
   'pajak diatur di sistem',
   'ongkir hardcoded',
   'ongkir di-set di backend',
+  // Phase 5++ roadmap-pattern leak guards.
+  'belum tersedia di platform',
+  'belum tersedia di platform ini',
+  'fitur modifier',
+  'fitur upsell',
+  'fitur add-on',
+  'logika ordering yang',
+  'logika kompleks',
+  'butuh logika',
+  'logika yang lebih',
   // Phase 5 hardening — codegen refusal regression patterns.
   'belum tersedia',
   'tidak tersedia',
@@ -270,15 +301,31 @@ async function main() {
     const attemptStart = Date.now();
     let outcome = { prompt, actions: [], ok: false, note: '', forbidden: [] };
     try {
-      const { status, actions, forbidden } = await askChat(prompt);
+      const { status, actions, forbidden, message } = await askChat(prompt);
       outcome.actions = actions.map((a) => a.type ?? 'unknown');
       outcome.forbidden = forbidden;
       // A prompt is considered green ONLY if the AI emitted at least
-      // one action AND used no forbidden phrases. A response that
-      // says "mau aku buatin?" but also emits the action still counts
-      // as a regression — the language reads as gating, even if the
-      // action eventually happens.
-      outcome.ok = status < 400 && actions.length > 0 && forbidden.length === 0;
+      // one action AND used no forbidden phrases.
+      let ok = status < 400 && actions.length > 0 && forbidden.length === 0;
+
+      // Roadmap-pattern prompts have an extra requirement: the reply
+      // must use a bridging phrase + offer a concrete workaround.
+      // "Belum siap dipake" alone fails the prompt even when the
+      // log_roadmap_request action fires.
+      if (ROADMAP_PROMPTS.has(prompt)) {
+        const lower = (message ?? '').toLowerCase();
+        const calledRoadmap = actions.some((a) => a.type === 'log_roadmap_request');
+        const hasBridge = BRIDGING_PHRASES.some((p) => lower.includes(p));
+        if (!calledRoadmap) {
+          outcome.note = 'roadmap prompt did not call log_roadmap_request';
+          ok = false;
+        } else if (!hasBridge) {
+          outcome.note = 'roadmap reply missing bridging phrase + workaround';
+          ok = false;
+        }
+      }
+      outcome.ok = ok;
+
       const customAction = actions.find(
         (a) => a.type === 'add_custom_section' || a.type === 'update_custom_section',
       );
