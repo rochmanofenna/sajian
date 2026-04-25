@@ -23,6 +23,12 @@ interface BuildOptions {
   // embeds the preview. Used on the 'preview' context to extend
   // frame-ancestors so preview.sajian.app agrees to be embedded by it.
   appFrameOrigin?: string;
+  // Storefront-served-as-preview: when the iframe loads a tenant
+  // subdomain with ?preview_token=... we relax frame-ancestors so the
+  // app origin can frame it. Detected purely by the query param's
+  // presence — the page itself only renders draft state if the token
+  // verifies, so a forged token doesn't reveal anything.
+  storefrontPreviewMode?: boolean;
 }
 
 // Any supabase project we might talk to — connect-src for realtime,
@@ -43,6 +49,7 @@ export function buildCsp({
   nonce,
   previewFrameOrigin,
   appFrameOrigin,
+  storefrontPreviewMode,
 }: BuildOptions): string {
   const supabase = supabaseOrigins();
   const connect = [
@@ -65,25 +72,29 @@ export function buildCsp({
   ];
 
   // Google Maps embed for the location / contact with_map variants.
-  // On the app context, also allow framing the preview origin so the
-  // /setup iframe isn't blocked. Preview itself has no business
-  // embedding anything, but 'self' covers any same-origin asset.
+  // On the app context, also allow framing the preview origin AND any
+  // tenant subdomain (proxy-mode preview embeds the real storefront)
+  // so the /setup iframe isn't blocked.
   const frameSrc = [
     "'self'",
     'https://www.google.com',
     'https://maps.google.com',
     ...(context === 'app' && previewFrameOrigin ? [previewFrameOrigin] : []),
-    ...(context === 'app' ? ['https://preview.sajian.app'] : []),
+    ...(context === 'app' ? ['https://preview.sajian.app', 'https://*.sajian.app'] : []),
   ];
 
   // frame-ancestors = "who can put ME in an iframe". Semantics per context:
-  //   • storefront  → 'none': never frame a customer's store.
-  //   • preview     → app origin: the /setup page embeds us. The preview
-  //                   origin is NOT a valid ancestor of itself.
-  //   • app         → 'self': nothing else embeds the app.
+  //   • storefront (normal)  → 'none': customer storefront never framed.
+  //   • storefront (preview) → app origin only: the iframe in /setup.
+  //   • preview              → app origin: the /setup page embeds us.
+  //   • app                  → 'self': nothing else embeds the app.
   const frameAncestors =
     context === 'storefront'
-      ? ["'none'"]
+      ? storefrontPreviewMode
+        ? ["'self'", appFrameOrigin, 'https://sajian.app', 'https://www.sajian.app']
+            .filter(Boolean)
+            .map(String)
+        : ["'none'"]
       : context === 'preview'
         ? ["'self'", appFrameOrigin, 'https://sajian.app', 'https://www.sajian.app']
             .filter(Boolean)

@@ -94,7 +94,26 @@ export async function proxy(request: NextRequest) {
     (host.includes('localhost') ? `http://${host}` : 'https://preview.sajian.app');
   const appFrameOrigin = appOrigin(host);
 
-  const csp = buildCsp({ context, nonce, previewFrameOrigin, appFrameOrigin });
+  // Storefront proxy-mode preview: the iframe URL carries
+  // ?preview_token=... OR the cookie has been promoted on a previous
+  // page load. We can't verify the JWT here (edge runtime, no node
+  // crypto), so we trust mere presence to relax framing — the page
+  // server still validates the token before rendering draft state, so
+  // a forged token only reveals the live page, which is what
+  // frame-ancestors 'none' was preventing anyway. Either signal is
+  // enough; both are common during normal navigation.
+  const storefrontPreviewMode =
+    context === 'storefront' &&
+    (Boolean(request.nextUrl.searchParams.get('preview_token')) ||
+      request.cookies.has('sajian_preview_token'));
+
+  const csp = buildCsp({
+    context,
+    nonce,
+    previewFrameOrigin,
+    appFrameOrigin,
+    storefrontPreviewMode,
+  });
   const cspHeader = cspHeaderName();
 
   // Thread nonce + CSP onto the REQUEST so Next's internal bootstrap
@@ -116,14 +135,19 @@ export async function proxy(request: NextRequest) {
   response.headers.set('Origin-Agent-Cluster', '?1');
   // X-Frame-Options doesn't support allow-from, so we can't express
   // "frame by sajian.app only" here — CSP frame-ancestors does that
-  // precisely. For the preview context we OMIT X-Frame-Options so it
-  // can't override the more specific frame-ancestors directive; legacy
-  // browsers that ignore frame-ancestors also tend to lack support for
-  // the cross-origin features our preview needs anyway.
-  if (context === 'storefront') {
+  // precisely. We OMIT XFO on the preview origin AND on the storefront
+  // when it's serving in preview mode (proxy-mode iframe), letting the
+  // more precise frame-ancestors directive govern. Otherwise we keep
+  // the strict defaults.
+  if (context === 'storefront' && !storefrontPreviewMode) {
     response.headers.set('X-Frame-Options', 'DENY');
   } else if (context === 'app') {
     response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  }
+
+  // Drafts must never be indexed.
+  if (storefrontPreviewMode) {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow');
   }
   response.headers.set(
     'Permissions-Policy',
