@@ -218,7 +218,13 @@ export async function POST(req: Request) {
           pos_pushed: true,
           status: 'new',
           branch_code: body.branchCode,
-          branch_name: branchRow.data?.name ?? body.branchCode,
+          // Default branches carry name=NULL post-migration 022 — preserve
+          // that signal in the snapshot so display helpers
+          // (formatOrderLocationLabel) fall back to tenant.name instead of
+          // surfacing the internal "MAIN" code on receipts. Multi-branch
+          // tenants with explicit names ("Citra 8", "Sudirman") still
+          // snapshot correctly for history.
+          branch_name: branchRow.data?.name ?? null,
           customer_notes: body.customerNotes ?? null,
           guest_contact: guestContact,
         })
