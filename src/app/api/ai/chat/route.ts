@@ -109,7 +109,7 @@ function draftStateBlock(draft: TenantDraft): string {
   ].join('\n');
   return `
 <current_draft_state>
-Sections in current order (USE THESE section_id VALUES EXACTLY when calling reorder_sections, update_section_props, update_section_variant, toggle_section, remove_section, update_custom_section. Never invent IDs. Never reuse IDs from earlier turns — they may be stale.):
+Sections in current order (USE THESE section_id VALUES EXACTLY when calling reorder_sections, update_section_props, update_section_variant, toggle_section, remove_section, update_custom_section. Never invent IDs. Never reuse IDs from earlier turns — they may be stale. For reorder_sections, the order array MUST contain the FULL new section order using the section_id values above; partial orders cause REORDER_NO_OP failures because un-mentioned sections fall to the end and the result equals the input. To move section A above section B, list every section_id in the desired final order, not just A and B.):
 ${sectionLines}
 
 Tenant settings snapshot:

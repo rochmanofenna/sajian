@@ -19,7 +19,7 @@
           "dark": "#1A1A18"
         }
       },
-      "prompt_sets": ["spatial", "settings", "codegen", "roadmap", "fauzan_regression"]
+      "prompt_sets": ["spatial", "settings", "codegen", "roadmap", "fauzan_regression", "reorder_v2"]
     },
     "admin": {
       "endpoint": "/api/admin/ai/chat",
@@ -29,7 +29,7 @@
         "messages": "Array<{role,content}>",
         "recent_action_results": "PriorActionResult[] (optional)"
       },
-      "prompt_sets": ["fauzan_regression", "admin_specific"]
+      "prompt_sets": ["fauzan_regression", "admin_specific", "reorder_v2"]
     }
   },
   "prompt_sets": {
@@ -120,6 +120,16 @@
         "tambahkan menu additional yang muncul saat pesan untuk upselling",
         "tambahkan sistem membership",
         "tambahkan input voucher code di halaman pembayaran"
+      ]
+    },
+    "reorder_v2": {
+      "description": "Reorder action correctness: the AI must emit a FULL ordered list of section ids (not partial), and must NEVER use past-tense success language ('sudah dipindahin', 'beres') on the same turn it emits the action — the action hasn't run yet (rule 0 part B). Each prompt expects reorder_sections to fire with intent-tense reply text only.",
+      "prompts": [
+        "pindahkan gallery ke atas about",
+        "tukar promo dan testimoni",
+        "balik urutan semua section",
+        "taruh testimoni paling bawah",
+        "section about langsung di bawah hero"
       ]
     },
     "admin_specific": {
