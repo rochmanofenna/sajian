@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
 import { formatCurrency } from '@/lib/utils';
+import { formatOrderBranchSuffix } from '@/lib/orders/display';
 import { PageNav } from '@/components/chrome/PageNav';
 
 interface OrderRow {
@@ -18,7 +19,7 @@ interface OrderRow {
   payment_status: string;
   payment_method: string;
   total: number;
-  branch_name: string;
+  branch_name: string | null;
   order_type: string;
   items: Array<{ name: string; quantity: number }>;
   created_at: string;
@@ -105,8 +106,11 @@ export function AccountOrdersView({ tenant }: { tenant: PublicTenant }) {
                 {new Date(o.created_at).toLocaleString('id-ID', {
                   dateStyle: 'medium',
                   timeStyle: 'short',
-                })}{' '}
-                · {o.branch_name}
+                })}
+                {(() => {
+                  const b = formatOrderBranchSuffix(o.branch_name);
+                  return b ? ` · ${b}` : '';
+                })()}
               </div>
               <div className="text-xs text-zinc-600 mt-2 line-clamp-1">
                 {o.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}

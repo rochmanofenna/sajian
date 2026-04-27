@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
 import { formatCurrency } from '@/lib/utils';
+import { formatOrderLocationLabel } from '@/lib/orders/display';
 import { PageNav } from '@/components/chrome/PageNav';
 import { LoginDialog } from './auth/LoginDialog';
 
@@ -39,7 +40,7 @@ interface OrderRow {
   payment_redirect_url: string | null;
   payment_expires_at: string | null;
   total: number;
-  branch_name: string;
+  branch_name: string | null;
   items: Array<{ name: string; quantity: number; price: number }>;
   created_at: string;
   guest_contact: { name?: string; phone?: string; email?: string | null } | null;
@@ -179,7 +180,10 @@ export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: 
       <PageNav
         label={`Pesanan · #${order.order_number}`}
         backHref="/"
-        caption={order.branch_name}
+        caption={formatOrderLocationLabel({
+          branchName: order.branch_name,
+          tenantName: tenant.name,
+        })}
       />
       <div className="max-w-md mx-auto px-4 py-6 space-y-4">
         <div className="text-center">
@@ -189,7 +193,12 @@ export function TrackView({ tenant, orderId }: { tenant: PublicTenant; orderId: 
           >
             #{order.order_number}
           </h1>
-          <p className="text-sm text-zinc-600 mt-1">{order.branch_name}</p>
+          <p className="text-sm text-zinc-600 mt-1">
+            {formatOrderLocationLabel({
+              branchName: order.branch_name,
+              tenantName: tenant.name,
+            })}
+          </p>
         </div>
 
         {/* Paid state — celebrate. */}
