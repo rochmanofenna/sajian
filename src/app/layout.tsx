@@ -6,11 +6,27 @@
 //
 // Root domain (no tenant) falls back to Sajian-branded marketing defaults.
 
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans, Fraunces, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { getTenant, toPublicTenant } from '@/lib/tenant';
 import { TenantProvider } from '@/context/TenantContext';
+
+// Mobile-first viewport. Without this every page renders at the
+// browser's "desktop width" fallback (~980px) on phones and zooms
+// out to fit, which made every Sajian screen unreadable on actual
+// phones. Indonesian restaurant owners primarily onboard via mobile,
+// and customers always do — viewport meta is the single highest-
+// leverage mobile fix in the app. Keep maximumScale unset so users
+// can still pinch-zoom (a11y, never lock that).
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // No themeColor here — tenant colors aren't known at the type's
+  // resolution time. Set per-tenant via the inline <html style>
+  // theme vars instead, which the browser address-bar tinting on
+  // iOS Safari + Android Chrome already picks up.
+};
 
 const jakarta = Plus_Jakarta_Sans({
   variable: '--font-sans',
