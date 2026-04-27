@@ -100,7 +100,65 @@
 }
 .ob-header__signout:disabled { opacity: 0.5; cursor: wait; }
 
-.ob-header__actions { display: inline-flex; align-items: center; gap: 8px; }
+.ob-header__actions { position: relative; display: inline-flex; align-items: center; gap: 8px; }
+.ob-header__actions-inline { display: inline-flex; align-items: center; gap: 8px; }
+.ob-header__actions-menu { display: none; position: relative; }
+.ob-header__kebab {
+  height: 44px;
+  width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(10, 11, 10, 0.12);
+  background: transparent;
+  color: var(--ob-ink-mute);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.ob-header__kebab:hover { border-color: rgba(10, 11, 10, 0.32); color: var(--ob-ink); }
+.ob-header__kebab:disabled { opacity: 0.5; cursor: wait; }
+.ob-header__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 180px;
+  background: var(--ob-paper);
+  border: 1px solid rgba(10, 11, 10, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px -16px rgba(10, 11, 10, 0.28);
+  padding: 4px;
+  z-index: 40;
+}
+.ob-header__menu-item {
+  width: 100%;
+  text-align: left;
+  font-family: var(--ob-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ob-ink);
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.ob-header__menu-item:hover { background: rgba(10, 11, 10, 0.06); }
+.ob-header__menu-item:disabled { opacity: 0.5; cursor: wait; }
+
+/* Collapse the inline pills into a kebab on narrow viewports + tighten
+   header chrome so it fits at iPhone SE (375px) without truncation. */
+@media (max-width: 640px) {
+  .ob-header { padding: 10px 14px; gap: 8px; }
+  .ob-wordmark { font-size: 17px; }
+  .ob-header__meta { display: none; }
+  .ob-header__actions-inline { display: none; }
+  .ob-header__actions-menu { display: inline-flex; }
+}
 
 .ob-panel__topbar {
   display: flex;
@@ -775,6 +833,71 @@
   .ob-device--desktop { width: 100%; aspect-ratio: 4 / 3; max-height: 60vh; }
   .ob-chat__kicker { display: none; }
   .ob-panel__uploads { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+}
+
+/* Mobile-only refinements for the preview pane:
+   1. The sticky pane-toggle (chat/preview switcher) and the preview's
+      own "PREVIEW — YANG DILIHAT PELANGGAN" pill carry the same
+      information at narrow widths and visually collide. Hide the
+      pill on mobile; the toggle's active state is the truth.
+   2. Pad the preview pane above its device frame so it doesn't
+      slide UNDER the sticky toggle.
+   3. Force the toggle's stacking context above the preview content
+      so backdrop-blur reads cleanly even if a section element
+      tries to rise behind it. */
+@media (max-width: 959px) {
+  .ob-preview__label { display: none; }
+  .ob-preview { padding-top: 8px; }
+  .ob-pane-toggle { z-index: 28; }
+  .ob-preview__topbar { padding-top: 0; gap: 10px; }
+}
+
+/* Drop the phone-mockup device chrome on real mobile viewports —
+   the user is already on a phone, so the simulated phone bezel is
+   cosmetic duplication AND was overflowing narrow widths. Render
+   the iframe edge-to-edge with subtle rounded corners + a small
+   shadow instead of the dark device shell. Desktop (>= 720px) keeps
+   the device chrome where it adds context. The device-toggle
+   (Phone/Desktop) is also redundant on mobile — hide it. */
+@media (max-width: 640px) {
+  .ob-device-toggle { display: none; }
+  .ob-device {
+    background: transparent;
+    box-shadow: 0 12px 32px -16px rgba(10, 11, 10, 0.18);
+    padding: 0;
+    border-radius: 18px;
+    isolation: isolate;
+  }
+  .ob-device--phone {
+    aspect-ratio: auto;
+    height: min(calc(100svh - 180px), 720px);
+    width: 100%;
+    max-width: 100%;
+    border-radius: 18px;
+  }
+  .ob-device--phone .ob-device__frame { border-radius: 18px; height: 100%; }
+  .ob-device--phone .ob-device__speaker { display: none; }
+  /* Desktop variant on a small phone: collapse to phone behaviour
+     (the device-toggle is hidden anyway, so this is a defensive
+     fallback if state ever resolves to desktop on mobile). */
+  .ob-device--desktop {
+    width: 100%;
+    aspect-ratio: auto;
+    height: min(calc(100svh - 180px), 720px);
+    max-height: none;
+    border-radius: 18px;
+    padding: 0;
+  }
+  .ob-device--desktop .ob-device__chrome { display: none; }
+  .ob-device--desktop .ob-device__frame {
+    height: 100%;
+    border-radius: 18px;
+  }
+  /* Adjust overlay insets to match the new flat frame. */
+  .ob-device--phone .ob-device__launching,
+  .ob-device--phone .ob-device__empty { inset: 0; border-radius: 18px; }
+  .ob-device--desktop .ob-device__launching,
+  .ob-device--desktop .ob-device__empty { inset: 0; border-radius: 18px; }
 }
 
 /* Defaults for the root domain (sajian.app). Tenants override via inline style
