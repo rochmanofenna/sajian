@@ -1,26 +1,38 @@
 // POST /api/admin/ai/chat — owner-gated live-ops chat.
 //
-// Same action-marker protocol as /api/ai/chat, but the system context is the
-// LIVE tenant (brand + menu items loaded from Supabase) and the emitted
-// actions map to admin mutations applied by the client against
-// /api/admin/tenant and /api/admin/menu/[id].
+// Same action-marker protocol as /api/ai/chat. Both routes go
+// through the unified buildSystemPrompt() in src/lib/ai/system-
+// prompt.ts so hardening (banned phrases, decision tree, roadmap
+// pattern, settings registry) cannot drift between surfaces. This
+// route differs from setup only in:
 //
-// We pass item IDs in the system prompt so the model can reference specific
-// rows without guessing. The prompt includes only a lightweight summary
-// (name + price + availability) — descriptions are omitted to keep the
-// context small when tenants have 100+ items.
+//   1. Header — addresses the LIVE tenant, not a draft.
+//   2. State JSON — live tenant brand row (no draft).
+//   3. State extras — actual category + menu-item rows with IDs
+//      so the AI can reference them in by-id actions
+//      (update_menu_item, remove_item, add_item).
+//   4. Goals — confirm destructive operations before emitting,
+//      reload context message.
+//
+// The action catalog filters to admin-eligible actions
+// automatically via routeKind='admin'. Setup-only actions
+// (add_custom_section, update_name, ready_to_launch) are excluded.
 
 import { NextResponse } from 'next/server';
 import { getAnthropic, CLAUDE_MODEL } from '@/lib/ai/anthropic';
 import { errorResponse, badRequest } from '@/lib/api/errors';
 import { requireOwnerOrThrow } from '@/lib/admin/auth';
 import { createServiceClient } from '@/lib/supabase/service';
+import { buildSystemPrompt, type PriorActionResult } from '@/lib/ai/system-prompt';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 interface AdminChatReq {
   messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  /** Read-back loop — same shape as /api/ai/chat. Optional until
+   *  the admin client (AdminAIWorkspace) starts tracking results. */
+  recent_action_results?: PriorActionResult[];
 }
 
 interface MenuItemRow {
@@ -35,15 +47,45 @@ interface CategoryRow {
   name: string;
 }
 
-const SYSTEM = (
-  tenantName: string,
-  tagline: string | null,
-  template: string,
-  colors: { primary: string; accent: string; background: string; dark: string },
-  hours: unknown,
+const ADMIN_HEADER = (tenantName: string): string =>
+  `You are ${tenantName}'s live management assistant. The owner is talking to you to change their LIVE storefront and menu.`;
+
+const ADMIN_GOALS = `Goals:
+- Confirm what you're about to change BEFORE emitting the action marker.
+- For remove_item / delete_location / set_template that changes the look dramatically: ASK first ("Oke hapus [item]? Ketik 'ya'") and only emit on confirmation.
+- For destructive actions on roadmap-shaped requests (modifier groups, loyalty, vouchers, reservations, subscriptions), use log_roadmap_request with a concrete workaround — don't refuse politely, don't pretend the feature exists.
+- After a successful change, the next user turn re-loads the live state, so you'll see the effect.
+
+Rules:
+- MATCH item names case-insensitively and fuzzily (e.g. "nasi goreng" matches "NASI GORENG SEAFOOD" if that's the closest). If multiple items could match, ASK which one.
+- For add_item: use the category_id from the list above. If the owner didn't say which category, ASK — don't guess.
+- Prices are integers in Rupiah. "28 ribu"/"28rb"/"28K" → 28000.
+- Colors: hex strings like "#1B5E3B". If the owner says "lebih gelap", darken current primary by ~20%.
+- Template: one of kedai | warung | modern | food-hall | classic.
+- Days of week keys: monday..sunday (lowercase English) for operating_hours.
+- Never emit an action without being asked. If the request is ambiguous, ASK.
+- Each action marker must be valid JSON on a single line. Place all markers at the very end, one per line.
+
+Phrase mapping (semantic, not literal):
+- "nasi goreng habis hari ini"   → update_menu_item field=is_available value=false (admin: by id)
+- "naikin harga nasi goreng jadi 30rb" → update_menu_item field=price value=30000
+- "tambahin es kopi susu 15rb ke minuman" → add_item category_id=<uuid of Minuman> name=... price=15000
+- "hapus nasi goreng seafood"    → remove_item id=<uuid> (after confirmation)
+- "ganti warna primary ke hijau gelap" → update_colors colors={"primary":"#..."}
+- "tagline-nya ganti jadi X"     → update_tagline
+- "jam buka hari ini 10 pagi"    → update_hours
+- "ganti layout kayak warung"    → set_template template="warung"
+- "ganti font heading ke Poppins" → update_tenant_setting key=heading_font_family value="Poppins"
+- "matikan multi branch"          → update_tenant_setting key=multi_branch_mode value=false
+- "tambahin sistem membership"   → log_roadmap_request category="loyalty" + concrete workaround
+- "input voucher code di pembayaran" → log_roadmap_request category="gift_cards" + manual-WhatsApp workaround
+- "kategori additional buat upselling" → log_roadmap_request category="modifiers" + Tambahan-category workaround
+- "atur urutan section" → reorder_sections (use exact section_id values from <current_draft_state> when provided, otherwise ASK)`;
+
+function buildStateExtras(
   categories: CategoryRow[],
   items: Array<MenuItemRow & { category_id: string | null }>,
-) => {
+): string {
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
   const catLines = categories.map((c) => `- "${c.name}" (id: ${c.id})`).join('\n');
   const itemLines = items
@@ -55,58 +97,14 @@ const SYSTEM = (
     )
     .join('\n');
 
-  return `You are ${tenantName}'s live management assistant. The owner is talking to you to change their LIVE storefront and menu.
-
-Speak casual Bahasa Indonesia (like chatting with a friend). Keep replies short: 1-2 sentences. Confirm what you're about to change, then emit the action marker.
-
-Current live state:
-\`\`\`json
-${JSON.stringify({ tagline, theme_template: template, colors, operating_hours: hours }, null, 2)}
-\`\`\`
+  return `
 
 Categories (${categories.length} total):
 ${catLines || '(kosong)'}
 
 Menu items (${items.length} total):
-${itemLines || '(kosong)'}
-
-When the owner asks for a change, append ONE OR MORE action markers at the end of your reply, one per line. Every change the owner asked for must be emitted in a single turn.
-
-Available actions:
-  <!--ACTION:{"type":"update_tagline","tagline":"Kopi & sandwich paling enak di Bintaro"}-->
-  <!--ACTION:{"type":"update_colors","colors":{"primary":"#1B5E3B"}}-->
-  <!--ACTION:{"type":"set_template","template":"kedai"}-->
-  <!--ACTION:{"type":"update_hours","hours":{"monday":{"open":"08:00","close":"22:00"}}}-->
-  <!--ACTION:{"type":"update_menu_item","id":"<uuid>","field":"is_available","value":false}-->
-  <!--ACTION:{"type":"update_menu_item","id":"<uuid>","field":"price","value":28000}-->
-  <!--ACTION:{"type":"update_menu_item","id":"<uuid>","field":"name","value":"Kopi Susu Gula Aren"}-->
-  <!--ACTION:{"type":"update_menu_item","id":"<uuid>","field":"description","value":"Susu segar + gula aren"}-->
-  <!--ACTION:{"type":"add_item","category_id":"<uuid>","name":"Es Kopi Susu","price":15000,"description":"Kopi + susu segar"}-->
-  <!--ACTION:{"type":"remove_item","id":"<uuid>"}-->
-
-Phrase mapping (examples — match semantically, don't pattern-match literally):
-- "nasi goreng habis hari ini"   → update_menu_item field=is_available value=false
-- "kopi susu gula aren available lagi" → update_menu_item field=is_available value=true
-- "naikin harga nasi goreng jadi 30rb" → update_menu_item field=price value=30000
-- "tambahin es kopi susu 15rb ke minuman" → add_item category_id=<uuid of Minuman> name=... price=15000
-- "hapus nasi goreng seafood"    → remove_item id=<uuid>
-- "ganti warna primary ke hijau gelap" → update_colors colors={"primary":"#..."}
-- "tagline-nya ganti jadi X"     → update_tagline
-- "jam buka hari ini 10 pagi"    → update_hours hours={"monday":{"open":"10:00","close":"22:00"}}
-- "ganti layout kayak warung"    → set_template template="warung"
-
-Rules:
-- MATCH item names case-insensitively and fuzzily (e.g. "nasi goreng" matches "NASI GORENG SEAFOOD" if that's the closest). If multiple items could match, ASK which one.
-- For add_item: use the category_id from the list above. If the owner didn't say which category, ASK — don't guess.
-- For remove_item: confirm with the owner before emitting. Say "Oke hapus [item]? Ketik 'ya'" and wait for confirmation before emitting the action.
-- Prices are integers in Rupiah. "28 ribu"/"28rb"/"28K" → 28000.
-- Colors: hex strings like "#1B5E3B". If the owner says "lebih gelap", darken the current primary by ~20%. If "lebih warm", shift toward warmer hue.
-- Template: one of kedai | warung | modern | food-hall | classic.
-- Days of week keys: monday..sunday (lowercase English) for operating_hours.
-- Never emit an action without being asked. If the request is ambiguous, ASK.
-- Each action marker must be valid JSON on a single line. Place all markers at the very end, one per line.
-- After a successful change you'll see the effect on the next message because the draft context re-loads.`;
-};
+${itemLines || '(kosong)'}`;
+}
 
 export async function POST(req: Request) {
   try {
@@ -130,19 +128,35 @@ export async function POST(req: Request) {
         .order('sort_order', { ascending: true }),
     ]);
 
+    const stateJson = JSON.stringify(
+      {
+        name: tenant.name,
+        tagline: tenant.tagline,
+        theme_template: tenant.theme_template,
+        colors: tenant.colors,
+        operating_hours: tenant.operating_hours,
+      },
+      null,
+      2,
+    );
+
+    const system = buildSystemPrompt({
+      kind: 'admin',
+      header: ADMIN_HEADER(tenant.name),
+      stateJson,
+      stateExtras: buildStateExtras(
+        (cats ?? []) as CategoryRow[],
+        (items ?? []) as Array<MenuItemRow & { category_id: string | null }>,
+      ),
+      goals: ADMIN_GOALS,
+      recentActionResults: body.recent_action_results,
+    });
+
     const anthropic = getAnthropic();
     const res = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 1024,
-      system: SYSTEM(
-        tenant.name,
-        tenant.tagline,
-        tenant.theme_template,
-        tenant.colors,
-        tenant.operating_hours,
-        (cats ?? []) as CategoryRow[],
-        (items ?? []) as Array<MenuItemRow & { category_id: string | null }>,
-      ),
+      system,
       messages: body.messages.map((m) => ({ role: m.role, content: m.content })),
     });
 
