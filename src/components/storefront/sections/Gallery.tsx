@@ -43,6 +43,36 @@ function Header({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Gall
   );
 }
 
+// Maps a raw photo count to a clean grid layout. Pre-fix the Grid
+// variant always rendered grid-cols-3 regardless of count, producing
+// awkward 3+1 / 3+2 / 3+3+1 orphan rows (Fauzan's Sandwicherie
+// preview hit the 3+1 case with 4 photos). The map below trims to
+// the nearest count that produces a clean rectangular grid and picks
+// the column count to match. Mobile keeps a smaller column count so
+// thumbs aren't tiny.
+//
+// Trim semantics: a count of 5 trims to 4, 7 trims to 6, 10/11 trim
+// to 9, 13+ trims to 12. We never pad with placeholder photos —
+// silent trim is preferable to filler.
+export function galleryGridLayout(rawCount: number): {
+  cleanCount: number;
+  mobileCols: string;
+  desktopCols: string;
+} {
+  if (rawCount <= 0) return { cleanCount: 0, mobileCols: 'grid-cols-1', desktopCols: 'md:grid-cols-1' };
+  if (rawCount === 1) return { cleanCount: 1, mobileCols: 'grid-cols-1', desktopCols: 'md:grid-cols-1' };
+  if (rawCount === 2) return { cleanCount: 2, mobileCols: 'grid-cols-2', desktopCols: 'md:grid-cols-2' };
+  if (rawCount === 3) return { cleanCount: 3, mobileCols: 'grid-cols-1', desktopCols: 'md:grid-cols-3' };
+  if (rawCount === 4) return { cleanCount: 4, mobileCols: 'grid-cols-2', desktopCols: 'md:grid-cols-2' };
+  if (rawCount === 5) return { cleanCount: 4, mobileCols: 'grid-cols-2', desktopCols: 'md:grid-cols-2' };
+  if (rawCount === 6) return { cleanCount: 6, mobileCols: 'grid-cols-2', desktopCols: 'md:grid-cols-3' };
+  if (rawCount === 7) return { cleanCount: 6, mobileCols: 'grid-cols-2', desktopCols: 'md:grid-cols-3' };
+  if (rawCount === 8) return { cleanCount: 8, mobileCols: 'grid-cols-2', desktopCols: 'md:grid-cols-4' };
+  if (rawCount === 9) return { cleanCount: 9, mobileCols: 'grid-cols-2', desktopCols: 'md:grid-cols-3' };
+  if (rawCount < 12) return { cleanCount: 9, mobileCols: 'grid-cols-2', desktopCols: 'md:grid-cols-3' };
+  return { cleanCount: 12, mobileCols: 'grid-cols-2', desktopCols: 'md:grid-cols-4' };
+}
+
 function Grid({
   ctx,
   props,
@@ -52,6 +82,10 @@ function Grid({
   props: GalleryProps;
   photos: string[];
 }) {
+  // Trim to a clean rectangular grid count (see galleryGridLayout).
+  const { cleanCount, mobileCols, desktopCols } = galleryGridLayout(photos.length);
+  const trimmed = cleanCount === 0 ? [] : photos.slice(0, cleanCount);
+
   // Lightbox: clicking a thumb opens a full-screen zoom; ESC / backdrop
   // / the X close it. Keyboard arrow keys step through siblings. All
   // state is local — no layout shift on the page when open.
@@ -60,12 +94,12 @@ function Grid({
     if (open === null) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(null);
-      if (e.key === 'ArrowRight') setOpen((i) => (i === null ? null : (i + 1) % photos.length));
-      if (e.key === 'ArrowLeft') setOpen((i) => (i === null ? null : (i - 1 + photos.length) % photos.length));
+      if (e.key === 'ArrowRight') setOpen((i) => (i === null ? null : (i + 1) % trimmed.length));
+      if (e.key === 'ArrowLeft') setOpen((i) => (i === null ? null : (i - 1 + trimmed.length) % trimmed.length));
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, photos.length]);
+  }, [open, trimmed.length]);
 
   return (
     <section
@@ -74,8 +108,8 @@ function Grid({
     >
       <div className="max-w-4xl mx-auto">
         <Header ctx={ctx} props={props} />
-        <div className="grid grid-cols-3 gap-2">
-          {photos.map((src, i) => (
+        <div className={`grid ${mobileCols} ${desktopCols} gap-2`}>
+          {trimmed.map((src, i) => (
             <button
               type="button"
               key={`${src}-${i}`}
@@ -108,7 +142,7 @@ function Grid({
           </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={photos[open]}
+            src={trimmed[open]}
             alt=""
             className="max-h-full max-w-full object-contain"
             onClick={(e) => e.stopPropagation()}

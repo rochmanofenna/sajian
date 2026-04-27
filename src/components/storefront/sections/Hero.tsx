@@ -47,10 +47,18 @@ export function Hero({ section, ctx, props }: SectionComponentProps<HeroProps>) 
 }
 
 function Lockup({ ctx, align = 'center' }: { ctx: SectionComponentProps['ctx']; align?: 'center' | 'left' }) {
+  // Below 480px the logo + tenant name overflowed in a single row for
+  // longer brand names ("Sandwicherie Lakeside", etc.) — the row clipped
+  // on the right edge of the hero. Stack vertically on narrow viewports
+  // and reflow to a row at ≥480px. Also drops the name font-size one
+  // step on mobile so very long names don't blow out a single line.
+  const isCenter = align === 'center';
   return (
     <div
-      className={`flex items-center gap-3 ${
-        align === 'center' ? 'justify-center' : 'justify-start'
+      className={`flex flex-col gap-2 min-[480px]:flex-row min-[480px]:items-center min-[480px]:gap-3 ${
+        isCenter
+          ? 'items-center text-center min-[480px]:justify-center'
+          : 'items-start min-[480px]:justify-start'
       }`}
     >
       {ctx.logoUrl && (
@@ -62,7 +70,7 @@ function Lockup({ ctx, align = 'center' }: { ctx: SectionComponentProps['ctx']; 
         />
       )}
       <span
-        className="text-3xl font-semibold tracking-tight"
+        className="text-2xl min-[480px]:text-3xl font-semibold tracking-tight"
         style={{ fontFamily: 'var(--font-display, serif)' }}
       >
         {ctx.name}
