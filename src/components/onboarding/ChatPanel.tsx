@@ -1151,24 +1151,54 @@ Rewrite the source_jsx to fix this. Use only the allowed primitives (Motion, Ove
       const res = await fetch('/api/ai/extract-menu', { method: 'POST', body: fd });
       const body = await res.json();
       if (!res.ok) {
-        if (body.debug) console.error('[extract-menu] server debug', body.debug);
-        throw new Error(body.error ?? 'Gagal baca menu');
+        // Surface the server's specific error to the owner. The route
+        // returns Indonesian copy + an error_code we log for debug.
+        // Without this bubble the owner saw the same generic "Gagal
+        // baca menu" for every distinct failure mode (PDF too big,
+        // timeout, no_categories, preprocess fail). Now they see the
+        // actual cause + an actionable next step.
+        console.error('[extract-menu] failed', {
+          status: res.status,
+          error_code: body.error_code,
+          failed_pages: body.failed_pages,
+          pages_total: body.pages_total,
+        });
+        await pushMessage({
+          role: 'assistant',
+          content: body.error ?? 'Gagal baca menu — coba foto yang lebih jelas atau pisah jadi beberapa file.',
+          kind: 'text',
+        });
+        return;
       }
 
       const cats: CategoryDraft[] = body.categories ?? [];
       await setMenu(cats);
 
       const itemCount = cats.reduce((n, c) => n + c.items.length, 0);
+      // Partial-success path: server returns body.notes when some
+      // pages parsed and others didn't ("12 dari 20 halaman terbaca.
+      // Halaman gagal: hal 3, hal 7."). Show the owner exactly what
+      // they got + what to retry, not a flat success.
+      const partialNote = (body.notes as string | undefined)?.trim();
+      const successContent = partialNote
+        ? `Aku berhasil baca ${itemCount} item dari ${cats.length} kategori. ${partialNote}`
+        : `Aku berhasil baca ${itemCount} item dari ${cats.length} kategori. Cek di bawah — klik di nama atau harga buat ubah, atau bilang aja ke aku!`;
       await pushMessage({
         role: 'assistant',
-        content: `Aku berhasil baca ${itemCount} item dari ${cats.length} kategori. Cek di bawah — klik di nama atau harga buat ubah, atau bilang aja ke aku!`,
+        content: successContent,
         kind: 'menu_extracted',
       });
     } catch (e) {
-      console.error('[menu] extraction failed', e);
+      console.error('[menu] extraction failed (network/parse)', e);
+      // Network or JSON parse failure — server error didn't reach us.
+      // Show the thrown error message verbatim instead of swallowing it
+      // into a generic string.
+      const detail = (e as Error).message?.trim();
       await pushMessage({
         role: 'assistant',
-        content: 'Gagal baca menu. Coba foto yang lebih jelas atau kirim per halaman.',
+        content: detail
+          ? `Gagal baca menu: ${detail}. Coba lagi sebentar lagi.`
+          : 'Gagal baca menu. Coba foto yang lebih jelas atau kirim per halaman.',
         kind: 'text',
       });
     } finally {
