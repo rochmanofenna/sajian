@@ -2,6 +2,11 @@
 // with_image, story (timeline). Exposes text_align, image_position,
 // heading_size, cta_* props so the AI can route layout requests through
 // update_section_props.
+//
+// Vertical rhythm follows the scale in docs/codegen-audit-2026-04-27.md
+// (Layer 1.3): py-16 default. The aside_slot wrapper at line ~80 keeps
+// pb-10 -mt-4 as authored — that's a deliberate split-section overlap
+// pattern, not section vertical rhythm.
 
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
 import {
@@ -86,7 +91,7 @@ export function About({ section, ctx, props }: SectionComponentProps<AboutProps>
 function Simple({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: AboutProps }) {
   const align = props.text_align ?? 'left';
   return (
-    <section className="px-6 py-12" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
+    <section className="px-6 py-16" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
       <div className={`max-w-xl mx-auto space-y-3 ${textAlignClass(align)}`}>
         <h2
           className={`font-semibold tracking-tight ${headingSizeClass(props.heading_size)}`}
@@ -142,7 +147,7 @@ function WithImage({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: A
     </div>
   );
   return (
-    <section className="px-6 py-12" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
+    <section className="px-6 py-16" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
       <div className="max-w-4xl mx-auto grid gap-6 md:grid-cols-2 items-center">
         {imageLeft ? imageBlock : copyBlock}
         {imageLeft ? copyBlock : imageBlock}
@@ -164,7 +169,7 @@ function Story({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: About
   const align = props.text_align ?? 'left';
 
   return (
-    <section className="px-6 py-12" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
+    <section className="px-6 py-16" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
       <div className={`max-w-2xl mx-auto space-y-6 ${textAlignClass(align)}`}>
         <h2
           className={`font-semibold tracking-tight ${headingSizeClass(props.heading_size)}`}

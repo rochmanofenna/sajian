@@ -1,5 +1,12 @@
 // Hero section — 5 variants. Icon-only logo + CSS-rendered restaurant name
 // so DALL·E text-garbling never shows up in the brand lockup.
+//
+// Vertical rhythm (Layer 1.3, 2026-04-27):
+//   py-16              — default top-level section padding
+//   py-24 md:py-32     — Fullscreen variant only (deliberate cinematic statement)
+//   py-12              — reserved for tight sections (do not introduce here)
+// Do not introduce new py-N values without updating the scale in
+// docs/codegen-audit-2026-04-27.md.
 
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
 import { ctaSizeClass, rowAlignClass, type Align, type CtaSize } from './cta';
@@ -83,7 +90,7 @@ function Gradient({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: He
   const { primary, dark, background } = ctx.colors;
   return (
     <section
-      className="relative py-20 px-6 text-center overflow-hidden"
+      className="relative py-16 px-6 text-center overflow-hidden"
       style={{
         background: `linear-gradient(165deg, ${primary} 0%, ${dark} 120%)`,
         color: background,
@@ -120,7 +127,7 @@ function Gradient({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: He
 function Minimal({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: HeroProps }) {
   const { primary, background } = ctx.colors;
   return (
-    <section className="px-6 py-14 text-center" style={{ background, color: primary }}>
+    <section className="px-6 py-16 text-center" style={{ background, color: primary }}>
       <div className="space-y-3">
         <Lockup ctx={ctx} />
         {ctx.tagline && <p className="text-sm opacity-70 max-w-sm mx-auto">{ctx.tagline}</p>}
@@ -143,7 +150,7 @@ function Minimal({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Her
 function Split({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: HeroProps }) {
   const { primary, background } = ctx.colors;
   return (
-    <section className="px-6 py-10" style={{ background, color: primary }}>
+    <section className="px-6 py-16" style={{ background, color: primary }}>
       <div className="max-w-4xl mx-auto grid gap-6 md:grid-cols-2 items-center">
         <div className="space-y-4">
           <Lockup ctx={ctx} align="left" />
@@ -259,7 +266,7 @@ function Fullscreen({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: 
 function Editorial({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: HeroProps }) {
   const { primary, background, dark } = ctx.colors;
   return (
-    <section className="px-6 py-14" style={{ background, color: dark }}>
+    <section className="px-6 py-16" style={{ background, color: dark }}>
       <div className="max-w-4xl mx-auto">
         <div className="grid gap-10 md:grid-cols-12 items-end">
           <div className="md:col-span-7 space-y-5">

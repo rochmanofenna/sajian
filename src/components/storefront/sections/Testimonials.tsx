@@ -1,5 +1,8 @@
 // Testimonials — customer reviews. Variants: cards (horizontal scroll),
 // quotes (single big pullquote), grid (2-column short reviews).
+//
+// Vertical rhythm follows the scale in docs/codegen-audit-2026-04-27.md
+// (Layer 1.3): py-16 default.
 
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
 
@@ -56,7 +59,7 @@ function Header({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Test
 
 function Cards({ ctx, props, reviews }: { ctx: SectionComponentProps['ctx']; props: TestimonialsProps; reviews: Review[] }) {
   return (
-    <section className="px-6 py-10" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
+    <section className="px-6 py-16" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
       <div className="max-w-4xl mx-auto">
         <Header ctx={ctx} props={props} />
         <div className="flex gap-3 overflow-x-auto pb-2 -mx-6 px-6 snap-x">
@@ -82,7 +85,7 @@ function Cards({ ctx, props, reviews }: { ctx: SectionComponentProps['ctx']; pro
 function Quotes({ ctx, props, reviews }: { ctx: SectionComponentProps['ctx']; props: TestimonialsProps; reviews: Review[] }) {
   const hero = reviews[0];
   return (
-    <section className="px-6 py-14" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
+    <section className="px-6 py-16" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
       <div className="max-w-2xl mx-auto text-center space-y-5">
         <Header ctx={ctx} props={props} />
         <blockquote
@@ -102,7 +105,7 @@ function Quotes({ ctx, props, reviews }: { ctx: SectionComponentProps['ctx']; pr
 
 function Grid({ ctx, props, reviews }: { ctx: SectionComponentProps['ctx']; props: TestimonialsProps; reviews: Review[] }) {
   return (
-    <section className="px-6 py-10" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
+    <section className="px-6 py-16" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
       <div className="max-w-3xl mx-auto">
         <Header ctx={ctx} props={props} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

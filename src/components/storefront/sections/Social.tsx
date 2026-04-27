@@ -2,6 +2,9 @@
 // variant renders a 3×3 grid of photos (pulled from gallery props or menu
 // item images when empty) so it feels like a live feed teaser without
 // needing a real Instagram embed.
+//
+// Vertical rhythm follows the scale in docs/codegen-audit-2026-04-27.md
+// (Layer 1.3): py-16 default.
 
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
 
@@ -49,7 +52,7 @@ function Icons({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Socia
   if (wa) links.push({ label: 'WhatsApp', href: wa });
 
   return (
-    <section className="px-6 py-10" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
+    <section className="px-6 py-16" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
       <div className="max-w-md mx-auto text-center space-y-3">
         <h2
           className="text-xl font-semibold tracking-tight"
@@ -91,7 +94,7 @@ function Feed({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Social
           .slice(0, 9);
 
   return (
-    <section className="px-6 py-10" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
+    <section className="px-6 py-16" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <h2
