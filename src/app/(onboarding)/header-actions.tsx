@@ -59,15 +59,35 @@ export function OnboardingHeaderActions() {
 
   async function reset() {
     setMenuOpen(false);
+    // Tenant-aware confirm: on a tenant subdomain the live storefront
+    // is unaffected by reset, so we say so explicitly. Without that
+    // assurance owners assume "reset" means "delete my restaurant" and
+    // rightfully panic — the button is one tap away from data loss
+    // even though the live row is never touched.
+    const current = useOnboarding.getState().draft;
+    const tenantName = current.name?.trim();
+    const tenantSlug = current.slug?.trim();
+    const liveAck =
+      tenantName && tenantSlug
+        ? ` Toko ${tenantName} yang udah live tetap aman di ${tenantSlug}.sajian.app.`
+        : tenantName
+          ? ` Toko ${tenantName} yang udah live tetap aman.`
+          : '';
     if (
       !window.confirm(
-        'Hapus draft dan mulai dari awal? Menu, foto, dan warna yang belum di-launch akan hilang.',
+        `Hapus semua perubahan yang belum dipublish?${liveAck} Menu, foto, dan warna draft akan hilang.`,
       )
     )
       return;
     setLoading('reset');
     await resetDraft();
-    setLoading(null);
+    // Page reload re-runs the boot effect: init() pulls a fresh empty
+    // row, seed-from-live re-fetches the LIVE storefront into the
+    // draft, the iframe re-mints its preview-token (clearing the
+    // stale src), and the chat lands on the resetup-greeting with
+    // real menu counts. Without this reload, previewSrc keeps the old
+    // URL and the iframe shows the previous tenant's storefront.
+    window.location.reload();
   }
 
   return (

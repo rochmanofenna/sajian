@@ -311,10 +311,19 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
     persist(get());
   },
 
-  // Full reset — clears the draft row server-side and the in-memory state.
-  // Escape hatch for contaminated drafts (wrong menu extracted, leftovers
-  // from a failed launch). Seeds a fresh section stack so the preview is
-  // never blank post-reset.
+  // Discard pending edits. Wipes the server-side draft row and clears
+  // in-memory state; the caller is expected to reload the page so the
+  // boot effect re-runs init() + seed-from-live, which repopulates the
+  // draft from the LIVE tenant (when on a tenant subdomain) and sets
+  // the right resetup greeting based on real menu counts.
+  //
+  // We deliberately do NOT set a custom "draft di-reset" greeting here
+  // — letting init's default greeting fall through means seed-from-
+  // live's onlyDefaultGreeting check fires and the user lands on the
+  // tenant-aware "Halo lagi. Tokomu X udah online — N menu..." copy.
+  // That implicitly acknowledges the reset (counts are live again) and
+  // avoids the old greeting that asked for the restaurant name on a
+  // tenant the user already owns.
   resetDraft: async () => {
     try {
       await fetch('/api/onboarding/draft', { method: 'DELETE' });
@@ -324,18 +333,8 @@ export const useOnboarding = create<OnboardingState>((set, get) => ({
     set({
       step: 'welcome',
       draft: { sections: defaultSections() },
-      messages: [
-        {
-          id: 'greeting',
-          role: 'assistant' as const,
-          content:
-            'Draft kamu sudah direset. Mulai dari awal — apa nama restoran kamu?',
-          kind: 'text' as const,
-          createdAt: Date.now(),
-        },
-      ],
+      messages: [],
     });
-    persist(get());
   },
 
   pushMessage: async (msg) => {
