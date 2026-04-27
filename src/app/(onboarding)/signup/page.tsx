@@ -16,6 +16,7 @@ import {
   normalizeIdPhone,
 } from '@/lib/auth/phone';
 import { mapAuthError, isMethodUnavailable, type AuthMethod } from '@/lib/auth/error-map';
+import { OTP_LENGTH } from '@/lib/auth/otp';
 
 type Stage = 'identify' | 'otp';
 
@@ -179,15 +180,15 @@ export default function SignupPage() {
               pattern="[0-9]*"
               required
               value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 10))}
-              placeholder="123456"
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH))}
+              placeholder="12345678"
               className="mt-1 w-full h-12 px-4 rounded-lg border border-[#1B5E3B]/20 bg-white tracking-widest text-lg"
             />
           </label>
 
           <button
             type="submit"
-            disabled={loading || otp.length < 6}
+            disabled={loading || otp.length < OTP_LENGTH}
             className="w-full h-12 rounded-full bg-[#1B5E3B] text-white font-medium disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
