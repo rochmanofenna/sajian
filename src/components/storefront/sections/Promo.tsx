@@ -4,6 +4,12 @@
 // (timer), or floating (fixed-position dismissible). All respect tenant
 // colors and expose cta_* / banner_align / emphasis props so the AI can
 // route layout requests through update_section_props instead of refusing.
+//
+// Vertical rhythm follows the scale in docs/codegen-audit-2026-04-27.md
+// (Layer 1.3): py-16 default. Inner card paddings (rounded-3xl px-6 py-8,
+// max-w-md mx-auto rounded-3xl px-5 py-6, fixed floating chip px-4 py-4)
+// are intentional inner-surface treatments, not section vertical rhythm,
+// and stay as authored.
 
 import { useEffect, useState } from 'react';
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
@@ -69,7 +75,7 @@ function Banner({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Prom
   const subtle = props.emphasis === 'subtle';
   return (
     <section
-      className="px-6 py-10"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div
@@ -115,7 +121,7 @@ function Card({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: PromoP
   const subtle = props.emphasis === 'subtle';
   return (
     <section
-      className="px-6 py-10"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div
@@ -256,7 +262,7 @@ function Countdown({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: P
 
   return (
     <section
-      className="px-6 py-10"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div

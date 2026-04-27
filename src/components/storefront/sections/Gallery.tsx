@@ -4,6 +4,9 @@
 // carousel, or 1-large-4-thumbnails featured layout. The grid variant
 // doubles as a lightbox — clicking a thumbnail opens a full-screen
 // zoomed view; ESC or clicking the backdrop closes it.
+//
+// Vertical rhythm follows the scale defined in
+// docs/codegen-audit-2026-04-27.md (Layer 1.3): py-16 default.
 
 import { useEffect, useState } from 'react';
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
@@ -103,7 +106,7 @@ function Grid({
 
   return (
     <section
-      className="px-6 py-10"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div className="max-w-4xl mx-auto">
@@ -164,7 +167,7 @@ function Carousel({
 }) {
   return (
     <section
-      className="px-6 py-10"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div className="max-w-4xl mx-auto">
@@ -199,7 +202,7 @@ function Featured({
   const thumbs = rest.slice(0, 4);
   return (
     <section
-      className="px-6 py-10"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div className="max-w-4xl mx-auto">

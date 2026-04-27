@@ -2,6 +2,9 @@
 // contact info next to a map embed for visitors who want directions.
 // Exposes layout, text_align, map_position, cta_* so the AI can route
 // layout requests through update_section_props.
+//
+// Vertical rhythm follows the scale in docs/codegen-audit-2026-04-27.md
+// (Layer 1.3): py-16 default.
 
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
 import {
@@ -77,7 +80,7 @@ function Simple({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Cont
   if (layout === 'inline') {
     return (
       <section
-        className="px-6 py-10"
+        className="px-6 py-16"
         style={{ background: ctx.colors.background, color: ctx.colors.dark }}
       >
         <div className="max-w-3xl mx-auto flex flex-wrap items-center gap-4 justify-between">
@@ -99,7 +102,7 @@ function Simple({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Cont
 
   return (
     <section
-      className="px-6 py-12"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div className={`max-w-md mx-auto space-y-3 ${textAlignClass(align)}`}>
@@ -190,7 +193,7 @@ function WithMap({ ctx, props }: { ctx: SectionComponentProps['ctx']; props: Con
 
   return (
     <section
-      className="px-6 py-12"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div className="max-w-4xl mx-auto grid gap-4 md:grid-cols-5 items-stretch">

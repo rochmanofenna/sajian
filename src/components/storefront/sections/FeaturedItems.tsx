@@ -1,5 +1,10 @@
 // Featured items — spotlight menu items on the home page.
 // Variants: horizontal, grid, spotlight.
+//
+// Vertical rhythm follows the scale in docs/codegen-audit-2026-04-27.md
+// (Layer 1.3): py-16 default. The aside_slot wrapper at line ~43 keeps
+// pb-8 -mt-4 as authored — that's a deliberate split-section overlap
+// pattern, not section vertical rhythm.
 
 import { formatCurrency } from '@/lib/utils';
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
@@ -96,7 +101,7 @@ function Horizontal({
 }) {
   return (
     <section
-      className="px-6 py-10"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div className="max-w-4xl mx-auto">
@@ -124,7 +129,7 @@ function Grid({
 }) {
   return (
     <section
-      className="px-6 py-10"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div className="max-w-4xl mx-auto">
@@ -152,7 +157,7 @@ function Spotlight({
   const rest = items.slice(1, 4);
   return (
     <section
-      className="px-6 py-12"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div className="max-w-4xl mx-auto space-y-6">

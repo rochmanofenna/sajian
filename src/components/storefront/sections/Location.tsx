@@ -1,6 +1,9 @@
 // Location — embedded map + address + "open in maps" link.
 // Uses Google Maps' keyless `embed` endpoint so we don't need an API key
 // for the iframe. Directions link falls back to a plain search URL.
+//
+// Vertical rhythm follows the scale in docs/codegen-audit-2026-04-27.md
+// (Layer 1.3): py-16 default.
 
 import type { SectionComponentProps } from '@/lib/storefront/section-types';
 
@@ -19,7 +22,7 @@ export function Location({ ctx, props }: SectionComponentProps<LocationProps>) {
   const openSrc = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
 
   return (
-    <section className="px-6 py-10" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
+    <section className="px-6 py-16" style={{ background: ctx.colors.background, color: ctx.colors.dark }}>
       <div className="max-w-4xl mx-auto">
         <h2
           className="text-xl font-semibold tracking-tight mb-4"

@@ -74,7 +74,7 @@ export async function CustomSection({
 
   return (
     <section
-      className="px-6 py-10"
+      className="px-6 py-16"
       style={{ background: ctx.colors.background, color: ctx.colors.dark }}
     >
       <div
