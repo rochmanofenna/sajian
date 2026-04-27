@@ -16,6 +16,7 @@ import { Bell, Loader2, X } from 'lucide-react';
 import type { PublicTenant } from '@/lib/tenant';
 import { createClient } from '@/lib/supabase/client';
 import { formatCurrency, formatRelativeTime } from '@/lib/utils';
+import { formatOrderBranchSuffix } from '@/lib/orders/display';
 import {
   canNotify,
   disableNotifications,
@@ -246,7 +247,11 @@ export function OrderFeed({ tenant }: { tenant: PublicTenant }) {
                     {o.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}
                   </div>
                   <div className="mt-1 text-xs text-zinc-500">
-                    {o.branch_name ?? '—'} · {formatRelativeTime(o.created_at)}
+                    {(() => {
+                      const b = formatOrderBranchSuffix(o.branch_name);
+                      return b ? `${b} · ` : '';
+                    })()}
+                    {formatRelativeTime(o.created_at)}
                     {o.esb_order_id && <span className="font-mono"> · ESB:{o.esb_order_id}</span>}
                   </div>
                 </div>
