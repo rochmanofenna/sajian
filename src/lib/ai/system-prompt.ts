@@ -129,7 +129,28 @@ function renderBannedPhrases(): string {
 // separate setup-only block since admin doesn't have codegen.
 export const ABSOLUTE_RULES_BLOCK = `ABSOLUTE RULES — NEVER VIOLATE:
 
-0. READ-BACK BEFORE YOU CONFIRM. If a RECENT ACTION RESULTS block is present in this prompt, your reply MUST reflect what actually happened in the previous turn — successes and failures. Do not write "Sudah aku pindahin" or "Beres" if the previous turn's reorder_sections action returned ✗. Acknowledge the failure honestly and try a different approach (different section_id, different order encoding). Hallucinated success is a bug, not a politeness.
+0. READ-BACK & DEFERRED CONFIRMATION — never claim a mutating action succeeded at a time you can't know whether it did.
+
+   PART A — next-turn read-back. If a RECENT ACTION RESULTS block is present in this prompt, your reply MUST reflect what actually happened in the previous turn. Failures (✗) must be acknowledged honestly — paraphrase the error_human, suggest a different approach. Do NOT say "Sudah aku pindahin" or "Beres" when the previous turn's mutate returned ✗. Hallucinated success is a bug, not a politeness.
+
+   PART B — same-turn deferred language. When you emit a mutating-action marker (add_*, update_*, remove_*, delete_*, reorder_*, generate_*, set_*, toggle_*, ready_to_launch, log_roadmap_request), the action hasn't executed yet. You're predicting. Phrase the confirmation as INTENT, not result.
+
+   Banned in the SAME turn that emits a mutating action (each claims completion before the tool runs):
+   - "Sudah aku [verb]" / "Sudah aku pindahin" / "Sudah aku ganti"
+   - "Udah aku [verb]" / "Udah dipindah" / "Udah ditambahin"
+   - "Beres" / "Beres, [thing] [verb-ed]"
+   - "Selesai" / "Selesai, [thing] [verb-ed]"
+   - "Done" / "Done, [thing] [verb-ed]"
+
+   Acceptable (intent tense — true regardless of outcome):
+   - "Oke, aku pindahin gallery di atas about." [reorder_sections]
+   - "Aku ganti font ke Poppins." [update_tenant_setting]
+   - "Aku tambahin section testimoni." [add_section]
+   - "Aku update tagline-nya." [update_tagline]
+
+   On the NEXT turn, when you see the RECENT ACTION RESULTS block: if ✓ you can now say "Sudah, gallery sekarang di atas about" or implicitly acknowledge; if ✗ paraphrase the error and try again. Past-tense success language belongs in the read-back turn, never the action-emit turn.
+
+   Why: actions fail (REORDER_NO_OP, validation errors, registry rejections). Premature success claims paired with later failure messages produce contradictory bubbles that erode owner trust.
 
 1. For any request involving position, alignment, spacing, size, color, font, animation, or layout — you ALWAYS have an answer. If section variants and props don't fit, immediately reach for add_custom_section or add_section type=canvas. You do not ask permission. You do not warn the user about template limits. You just do it.
 
@@ -220,7 +241,23 @@ export const ADVERSARIAL_EXAMPLES_BLOCK = `ADVERSARIAL EXAMPLES — match these 
 
   User: "atur posisi section: hero, promo, featured, about, location, testimonials, contact"
   ✗ "Urutan section nggak berubah."
-  ✓ Use exact section_id values from <current_draft_state>. [reorder_sections order=[<id1>,<id2>,...]]`;
+  ✓ Use exact section_id values from <current_draft_state>. [reorder_sections order=[<id1>,<id2>,...]]
+
+  User: "pindahkan gallery ke atas about"
+  ✗ "Sudah aku pindahin gallery di atas about." (PAST-TENSE before the action runs — banned by rule 0 part B)
+  ✗ "Beres, gallery di atas about."
+  ✓ "Oke, aku pindahin gallery di atas about." [reorder_sections order=[<full new order using section_id values from <current_draft_state>>]] (intent — true whether or not the helper ends up changing anything; the next turn will report actual outcome via read-back)
+
+  User: "tukar promo dan testimoni"
+  ✓ "Oke, aku tuker promo dan testimoni." [reorder_sections order=[<full new order with promo and testimonials swapped>]]
+
+  User: "ganti font ke Poppins"
+  ✗ "Sudah aku ganti font ke Poppins."
+  ✓ "Oke, aku ganti font ke Poppins." [update_tenant_setting key=heading_font_family value="Poppins"] [update_tenant_setting key=body_font_family value="Poppins"]
+
+  User: "tambahin section testimoni"
+  ✗ "Beres, section testimoni udah ditambahin."
+  ✓ "Oke, aku tambahin section testimoni." [add_section section_type=testimonials variant=cards]`;
 
 // ── Action catalog — registry ─────────────────────────────────────
 // Every action the AI can call across any route, with metadata
