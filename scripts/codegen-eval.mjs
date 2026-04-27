@@ -1,21 +1,32 @@
-// Codegen eval harness. Runs a fixed set of Indonesian natural-language
-// prompts against the live /api/ai/chat endpoint and records which
-// action(s) the AI emits, then POSTs any resulting source_jsx to
-// /api/sections/compile so we can measure first-attempt success.
+// AI route eval harness. Runs prompt sets defined in ai-routes.json
+// against the registered AI routes, then records action emissions and
+// banned-phrase / forbidden-id leaks. The eval is the gate that
+// catches prompt regressions BEFORE they ship.
 //
 // Usage:
 //   BASE_URL=https://sajian.app \
 //   AUTH_COOKIE='sb-…=…' \
 //   TENANT_ID=<uuid> \
-//   node scripts/codegen-eval.mjs
+//   node scripts/codegen-eval.mjs [--route=setup|admin] [--all]
 //
-// Output: docs/CODEGEN_EVAL_RESULTS.md with a markdown scorecard.
+// Defaults to --route=setup. CI runs --all so any new AI route added
+// to the registry is automatically covered the next time eval fires.
 //
-// The harness doesn't create sections it mutates; it only reads the
-// action grammar from the chat response and runs a dry compile. Intent
-// is to benchmark the AI's first-attempt rate, not modify the tenant.
+// Output:
+//   - docs/CODEGEN_EVAL_RESULTS.md       (legacy single-route scorecard)
+//   - docs/CODEGEN_EVAL_RESULTS_<route>.md per route when --all
+//
+// Exit 2 if any route had banned-phrase regressions. Exit 0 only if
+// every prompt across every selected route hit zero forbidden phrases.
 
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const REGISTRY_PATH = path.join(__dirname, 'ai-routes.json');
+const DOCS_DIR = path.join(__dirname, '..', 'docs');
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
 const AUTH_COOKIE = process.env.AUTH_COOKIE;
@@ -26,94 +37,55 @@ if (!AUTH_COOKIE || !TENANT_ID) {
   process.exit(1);
 }
 
-const PROMPTS = [
-  'tambahkan tombol floating di pojok kanan bawah',
-  'buat hero dengan countdown promo lebaran sampai 10 april',
-  'animasi fade in pas section about muncul',
-  'tambahkan badge "BARU" di foto menu pertama',
-  'promo 20% diskon yang nongol jam 5-9 malam',
-  'testimoni pelanggan dengan foto profil bulat',
-  'logo toko muter pelan di hero',
-  'banner pengumuman di atas, warnanya merah muda',
-  'section jadwal operasional dengan jam buka tutup',
-  'tombol whatsapp yang melayang di kanan bawah',
-  'countdown ke tanggal 1 mei dengan gambar latar',
-  'tambahin section testimoni 3 orang',
-  'galeri foto menu dengan klik untuk zoom',
-  'hero bergaya minimalis tanpa gambar',
-  'promo floating yang bisa ditutup',
-  'tambah section lokasi dengan peta',
-  'tombol pesan yang lebih besar dan di tengah',
-  'hide section about sementara',
-  'ganti warna primer jadi biru laut',
-  'hero dengan video latar kalau ada, kalau nggak pakai gambar',
-  // Phase 4 / Phase 5 adversarial spatial prompts — all should land
-  // an action without a "mau aku buatin?" stall.
-  'pindahkan logo dan nama toko ke pojok kiri atas',
-  'taruh tombol pesan di tengah halaman',
-  'logo melayang di pojok kanan atas',
-  'overlay teks "Selamat Datang" di atas foto hero',
-  'tombol whatsapp floating di kanan bawah, jangan ketutup tombol pesan',
-  'pindahkan foto about ke kiri, teksnya ke kanan',
-  'badge BARU di pojok kanan atas hero',
-  'tombol pesan agak turun dikit, jangan tabrakan dengan headline',
-  'logo, nama, tagline semua di tengah, ditumpuk vertikal',
-  'taruh banner promo paling atas, di atas hero',
-  // Phase 5 settings prompts — must NOT deflect to "tim bisa..."
-  'hilangkan pilih cabang langsung tampilkan menu',
-  'matikan multi branch, aku cuma punya 1 cabang',
-  'tambahkan cabang Sudirman, Jl Sudirman no 1, 0812345',
-  // Phase 5 hardening — codegen must reach for add_custom_section
-  // instead of "belum tersedia" + AI must not leak implementation jargon.
-  'tambahkan section article dalam bentuk post card dengan foto',
-  'pindahkan section testimoni ke paling bawah di atas kontak',
-  'buat section newsletter signup dengan input email',
-  'tambahkan section FAQ dengan accordion',
-  'tambahkan section pricing 3 paket',
-  'tambahkan section timeline perjalanan toko',
-  'tambahkan section comparison sebelum/sesudah',
-  // Phase 5 hardening — typography is YOUR job, not the team's.
-  'ganti font ke Poppins',
-  'ganti heading ke Futura body ke Inter',
-  'kombinasi Fraunces dengan Plus Jakarta Sans untuk heading dan body',
-  // Phase 5+ batch — settings surface closure (favicon, tax, social,
-  // delivery, payments, custom domain) + section-id reorder happy path.
-  'set favicon ke logo baru ini',
-  'set pajak 11% dan service charge 5%',
-  'tambahkan zone delivery Bintaro radius 3km ongkir 8rb',
-  'aktifkan QRIS dan VA BCA',
-  'hubungkan domain custom satetaichanuda.com',
-  'set ig dan tiktok kita @satetaichanuda',
-  'pindahkan testimoni ke paling bawah di atas kontak',
-  'tukar promo dan testimoni',
-  'hapus section gallery',
-  'balik urutan semua section',
-  // Phase 5++ third response pattern — roadmap_request prompts.
-  // Each must produce a log_roadmap_request action AND the reply
-  // must contain a bridging phrase ("kamu bisa", "sementara",
-  // "sambil nunggu") followed by a concrete workaround.
-  'tambahkan menu additional yang muncul saat pesan menu utama',
-  'buat sistem loyalty point member',
-  'fitur reservasi meja online untuk customer',
-  'subscription kopi bulanan, pelanggan langganan otomatis',
+// ── argv parsing ──────────────────────────────────────────────────
+const args = process.argv.slice(2);
+const ROUTE_ARG = args.find((a) => a.startsWith('--route='))?.split('=')[1];
+const RUN_ALL = args.includes('--all');
+
+// ── registry load ─────────────────────────────────────────────────
+const REGISTRY = JSON.parse(readFileSync(REGISTRY_PATH, 'utf8'));
+
+function pickRoutes() {
+  if (RUN_ALL) return Object.keys(REGISTRY.routes);
+  if (ROUTE_ARG) {
+    if (!REGISTRY.routes[ROUTE_ARG]) {
+      console.error(`Unknown route "${ROUTE_ARG}". Available: ${Object.keys(REGISTRY.routes).join(', ')}`);
+      process.exit(1);
+    }
+    return [ROUTE_ARG];
+  }
+  return ['setup']; // backward-compat default
+}
+
+function promptsForRoute(routeName) {
+  const route = REGISTRY.routes[routeName];
+  const sets = route.prompt_sets ?? [];
+  const prompts = [];
+  const meta = {}; // prompt → which set it came from
+  for (const setName of sets) {
+    const set = REGISTRY.prompt_sets[setName];
+    if (!set) continue;
+    for (const p of set.prompts) {
+      prompts.push(p);
+      meta[p] = setName;
+    }
+  }
+  return { prompts, meta };
+}
+
+// Roadmap prompts must call log_roadmap_request AND have a bridging
+// phrase + workaround. The set name is the source of truth.
+const ROADMAP_SET = 'roadmap';
+const BRIDGING_PHRASES = REGISTRY.prompt_sets[ROADMAP_SET]?.must_include_bridge ?? [
+  'kamu bisa',
+  'sementara',
+  'sambil nunggu',
+  'untuk sekarang',
 ];
 
-// Prompts that should resolve via log_roadmap_request. The eval
-// double-checks two things: (a) the action was emitted, and
-// (b) the reply contains a bridging phrase + workaround sentence
-// rather than a bare "belum siap" deflection.
-const ROADMAP_PROMPTS = new Set([
-  'tambahkan menu additional yang muncul saat pesan menu utama',
-  'buat sistem loyalty point member',
-  'fitur reservasi meja online untuk customer',
-  'subscription kopi bulanan, pelanggan langganan otomatis',
-]);
-
-const BRIDGING_PHRASES = ['kamu bisa', 'sementara', 'sambil nunggu', 'untuk sekarang'];
-
-// The AI must never use these phrases. They were the "I can't do that"
-// crutches that got users stuck on Phase 3. The harness flags any
-// response containing them so prompt regressions are caught early.
+// ── forbidden phrase scanner ──────────────────────────────────────
+// Mirrors src/lib/ai/system-prompt.ts BANNED_PHRASES exactly. When
+// the eval evolves to import that constant directly we'll deduplicate.
 const FORBIDDEN_PHRASES = [
   'dikontrol template',
   'dikontrol otomatis sama template',
@@ -127,7 +99,7 @@ const FORBIDDEN_PHRASES = [
   'mau aku buatin?',
   'apakah kamu mau aku',
   'maaf belum bisa',
-  // Phase 5 — settings/platform deflection patterns.
+  // Settings / team deflection.
   'tim bisa',
   'tim akan',
   'aku catat requestnya buat tim',
@@ -143,7 +115,7 @@ const FORBIDDEN_PHRASES = [
   'ada perubahan lain yang bisa aku bantu sekarang',
   'ganti font belum bisa',
   'font belum bisa',
-  // Phase 5+ batch deflections (settings surface).
+  // Phase 5+ batch deflections.
   'level xendit',
   'konfigurasi xendit',
   'perlu setting di backend',
@@ -151,7 +123,7 @@ const FORBIDDEN_PHRASES = [
   'pajak diatur di sistem',
   'ongkir hardcoded',
   'ongkir di-set di backend',
-  // Phase 5++ roadmap-pattern leak guards.
+  // Roadmap-pattern leak guards.
   'belum tersedia di platform',
   'belum tersedia di platform ini',
   'fitur modifier',
@@ -161,7 +133,7 @@ const FORBIDDEN_PHRASES = [
   'logika kompleks',
   'butuh logika',
   'logika yang lebih',
-  // Phase 5 hardening — codegen refusal regression patterns.
+  // Codegen refusal regressions.
   'belum tersedia',
   'tidak tersedia',
   'fitur ini belum',
@@ -170,7 +142,7 @@ const FORBIDDEN_PHRASES = [
   'section type ini belum',
   'alternatif yang mirip',
   'mau pakai yang mana?',
-  // Implementation jargon leak.
+  // Implementation-jargon leak.
   'emit action',
   'aku emit',
   'trigger action',
@@ -180,6 +152,25 @@ const FORBIDDEN_PHRASES = [
   'tool call',
   'function call',
 ];
+
+const UUID_RE = /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/;
+const SHORT_ID_RE = /\b[A-Za-z0-9_-]{16,}\b/;
+
+function scanForbidden(text) {
+  if (!text || typeof text !== 'string') return [];
+  const hits = [];
+  const lower = text.toLowerCase();
+  for (const p of FORBIDDEN_PHRASES) {
+    if (lower.includes(p.toLowerCase())) hits.push(p);
+  }
+  const stripped = text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]*`/g, '')
+    .replace(/https?:\/\/\S+/g, '');
+  if (UUID_RE.test(stripped)) hits.push('LEAK:uuid');
+  if (SHORT_ID_RE.test(stripped)) hits.push('LEAK:short-id');
+  return hits;
+}
 
 function parseActions(text) {
   const out = [];
@@ -195,51 +186,32 @@ function parseActions(text) {
   return out;
 }
 
-async function askChat(prompt) {
-  const res = await fetch(`${BASE_URL}/api/ai/chat`, {
+// ── route-aware request ───────────────────────────────────────────
+async function askRoute(routeName, prompt) {
+  const route = REGISTRY.routes[routeName];
+  const url = `${BASE_URL}${route.endpoint}`;
+
+  const body = { messages: [{ role: 'user', content: prompt }] };
+  if (route.kind === 'setup') {
+    body.draft = route.default_draft ?? { name: 'Eval Tenant' };
+  }
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Cookie: AUTH_COOKIE,
     },
-    body: JSON.stringify({
-      messages: [{ role: 'user', content: prompt }],
-      draft: { name: 'Eval Tenant', colors: { primary: '#1B5E3B', accent: '#C9A84C', background: '#FDF6EC', dark: '#1A1A18' } },
-    }),
+    body: JSON.stringify(body),
   });
-  const body = await res.json();
-  const message = body.message ?? '';
+  const json = await res.json().catch(() => ({}));
+  const message = json.message ?? '';
   return {
     status: res.status,
-    actions: body.actions ?? parseActions(message),
+    actions: json.actions ?? parseActions(message),
     message,
     forbidden: scanForbidden(message),
   };
-}
-
-// Regex catches UUIDs + nanoid-style 16+-char base64 strings the AI
-// must NEVER paste into chat. Skips short identifiers (Indonesian
-// words can hit 12+ chars) and content URLs (which legitimately
-// carry hashes). Anything matching = the AI leaked an internal ID.
-const UUID_RE = /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/;
-const SHORT_ID_RE = /\b[A-Za-z0-9_-]{16,}\b/;
-
-function scanForbidden(text) {
-  if (!text || typeof text !== 'string') return [];
-  const hits = [];
-  const lower = text.toLowerCase();
-  for (const p of FORBIDDEN_PHRASES) {
-    if (lower.includes(p.toLowerCase())) hits.push(p);
-  }
-  // ID-leak gate: ignore anything inside a fenced code block or URL,
-  // since those legitimately carry IDs.
-  const stripped = text
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/`[^`]*`/g, '')
-    .replace(/https?:\/\/\S+/g, '');
-  if (UUID_RE.test(stripped)) hits.push('LEAK:uuid');
-  if (SHORT_ID_RE.test(stripped)) hits.push('LEAK:short-id');
-  return hits;
 }
 
 async function dryCompile(sourceJsx) {
@@ -288,34 +260,28 @@ async function preflight() {
   return body;
 }
 
-async function main() {
-  const flagState = await preflight();
-  console.log(
-    `preflight ok — tenant ${flagState.tenant_id} codegen_enabled=${flagState.codegen_enabled}`,
-  );
+// ── one route execution ───────────────────────────────────────────
+async function runRoute(routeName, flagState) {
+  const { prompts, meta } = promptsForRoute(routeName);
+  console.log(`\n=== Route: ${routeName} (${prompts.length} prompts) ===`);
 
   const results = [];
   const start = Date.now();
-  for (let i = 0; i < PROMPTS.length; i += 1) {
-    const prompt = PROMPTS[i];
+  for (let i = 0; i < prompts.length; i += 1) {
+    const prompt = prompts[i];
+    const setName = meta[prompt];
     const attemptStart = Date.now();
-    let outcome = { prompt, actions: [], ok: false, note: '', forbidden: [] };
+    let outcome = { prompt, set: setName, actions: [], ok: false, note: '', forbidden: [] };
     try {
-      const { status, actions, forbidden, message } = await askChat(prompt);
+      const { status, actions, forbidden, message } = await askRoute(routeName, prompt);
       outcome.actions = actions.map((a) => a.type ?? 'unknown');
       outcome.forbidden = forbidden;
-      // A prompt is considered green ONLY if the AI emitted at least
-      // one action AND used no forbidden phrases.
       let ok = status < 400 && actions.length > 0 && forbidden.length === 0;
 
-      // Roadmap-pattern prompts have an extra requirement: the reply
-      // must use a bridging phrase + offer a concrete workaround.
-      // "Belum siap dipake" alone fails the prompt even when the
-      // log_roadmap_request action fires.
-      if (ROADMAP_PROMPTS.has(prompt)) {
+      if (setName === ROADMAP_SET) {
         const lower = (message ?? '').toLowerCase();
         const calledRoadmap = actions.some((a) => a.type === 'log_roadmap_request');
-        const hasBridge = BRIDGING_PHRASES.some((p) => lower.includes(p));
+        const hasBridge = BRIDGING_PHRASES.some((p) => lower.includes(p.toLowerCase()));
         if (!calledRoadmap) {
           outcome.note = 'roadmap prompt did not call log_roadmap_request';
           ok = false;
@@ -339,38 +305,60 @@ async function main() {
     }
     outcome.ms = Date.now() - attemptStart;
     results.push(outcome);
-    // Polite pacing so rate limits don't bite mid-run.
+    process.stdout.write(outcome.ok ? '.' : outcome.forbidden.length ? '!' : 'x');
     await new Promise((r) => setTimeout(r, 750));
   }
   const total = Date.now() - start;
+  console.log(''); // newline after progress dots
 
   const firstAttemptOk = results.filter((r) => r.ok).length;
   const customAttempted = results.filter(
-    (r) =>
-      r.actions.includes('add_custom_section') ||
-      r.actions.includes('update_custom_section'),
+    (r) => r.actions.includes('add_custom_section') || r.actions.includes('update_custom_section'),
   ).length;
   const compileAttempted = results.filter((r) => r.compile).length;
   const compileOk = results.filter((r) => r.compile?.ok === true).length;
   const forbiddenHits = results.filter((r) => r.forbidden && r.forbidden.length > 0);
 
+  return {
+    route: routeName,
+    flagState,
+    results,
+    summary: {
+      total: results.length,
+      firstAttemptOk,
+      customAttempted,
+      compileAttempted,
+      compileOk,
+      forbiddenHits: forbiddenHits.length,
+      ms: total,
+    },
+  };
+}
+
+function renderScorecard(routeResult) {
+  const { route, flagState, results, summary } = routeResult;
   const lines = [
-    '# Codegen eval scorecard',
+    `# AI eval scorecard — ${route}`,
     '',
     `- Tenant: ${flagState.tenant_id}`,
-    `- Prompts run: ${results.length}`,
-    `- First-attempt action emitted (no forbidden phrase): ${firstAttemptOk}/${results.length} (${Math.round((firstAttemptOk / results.length) * 100)}%)`,
-    `- Custom-section attempts: ${customAttempted}/${results.length}`,
-    compileAttempted > 0
-      ? `- Dry-run compile success: ${compileOk}/${compileAttempted} (${Math.round((compileOk / compileAttempted) * 100)}%)`
+    `- Route: ${route} → ${REGISTRY.routes[route].endpoint}`,
+    `- Prompts run: ${summary.total}`,
+    `- First-attempt action emitted (no forbidden phrase): ${summary.firstAttemptOk}/${summary.total} (${Math.round(
+      (summary.firstAttemptOk / summary.total) * 100,
+    )}%)`,
+    `- Custom-section attempts: ${summary.customAttempted}/${summary.total}`,
+    summary.compileAttempted > 0
+      ? `- Dry-run compile success: ${summary.compileOk}/${summary.compileAttempted} (${Math.round(
+          (summary.compileOk / summary.compileAttempted) * 100,
+        )}%)`
       : '- Dry-run compile success: n/a',
-    `- Forbidden-phrase regressions: ${forbiddenHits.length}/${results.length}`,
-    `- Total wall time: ${total} ms`,
+    `- Forbidden-phrase regressions: ${summary.forbiddenHits}/${summary.total}`,
+    `- Total wall time: ${summary.ms} ms`,
     '',
     '## Per-prompt outcomes',
     '',
-    '| # | Prompt | Actions | source_jsx | Compile | Forbidden | Time |',
-    '|---|---|---|---|---|---|---|',
+    '| # | Set | Prompt | Actions | source_jsx | Compile | Forbidden | Time |',
+    '|---|---|---|---|---|---|---|---|',
   ];
   for (let i = 0; i < results.length; i += 1) {
     const r = results[i];
@@ -383,19 +371,64 @@ async function main() {
       : '-';
     const forbidden = r.forbidden?.length ? `⚠ ${r.forbidden.join('; ')}` : '-';
     const short = r.prompt.length > 60 ? `${r.prompt.slice(0, 60)}…` : r.prompt;
-    lines.push(`| ${i + 1} | ${short} | ${actions} | ${bytes} | ${compile} | ${forbidden} | ${r.ms} ms |`);
+    lines.push(
+      `| ${i + 1} | ${r.set ?? '-'} | ${short} | ${actions} | ${bytes} | ${compile} | ${forbidden} | ${r.ms} ms |`,
+    );
   }
-  if (forbiddenHits.length > 0) {
+  const regs = results.filter((r) => r.forbidden && r.forbidden.length > 0);
+  if (regs.length > 0) {
     lines.push('', '## Regressions detected', '');
-    for (const r of forbiddenHits) {
-      lines.push(`- "${r.prompt}" → ${r.forbidden.join(', ')}`);
+    for (const r of regs) {
+      lines.push(`- "${r.prompt}" (${r.set}) → ${r.forbidden.join(', ')}`);
     }
   }
-  const md = lines.join('\n');
-  writeFileSync(new URL('../docs/CODEGEN_EVAL_RESULTS.md', import.meta.url), md);
-  console.log(md);
-  if (forbiddenHits.length > 0) {
-    console.error(`\n⚠ ${forbiddenHits.length} prompt(s) hit forbidden phrases — fix prompt before rolling out.`);
+  return lines.join('\n');
+}
+
+async function main() {
+  const flagState = await preflight();
+  console.log(`preflight ok — tenant ${flagState.tenant_id} codegen_enabled=${flagState.codegen_enabled}`);
+
+  const routes = pickRoutes();
+  console.log(`Running eval against routes: ${routes.join(', ')}`);
+
+  const allResults = [];
+  for (const r of routes) {
+    const result = await runRoute(r, flagState);
+    allResults.push(result);
+    const md = renderScorecard(result);
+    const filename =
+      routes.length === 1 && !RUN_ALL
+        ? 'CODEGEN_EVAL_RESULTS.md'
+        : `CODEGEN_EVAL_RESULTS_${r}.md`;
+    writeFileSync(path.join(DOCS_DIR, filename), md);
+    console.log(`\n--- ${r} scorecard ---`);
+    console.log(md);
+  }
+
+  // Combined summary when --all so CI can grep one file.
+  if (RUN_ALL) {
+    const combined = [
+      '# AI eval scorecard — all routes',
+      '',
+      `- Tenant: ${flagState.tenant_id}`,
+      `- Routes: ${allResults.map((r) => r.route).join(', ')}`,
+      '',
+      '| Route | Prompts | OK | Forbidden | Wall time |',
+      '|---|---|---|---|---|',
+      ...allResults.map(
+        (r) =>
+          `| ${r.route} | ${r.summary.total} | ${r.summary.firstAttemptOk}/${r.summary.total} | ${r.summary.forbiddenHits} | ${r.summary.ms}ms |`,
+      ),
+    ].join('\n');
+    writeFileSync(path.join(DOCS_DIR, 'CODEGEN_EVAL_RESULTS.md'), combined);
+    console.log('\n--- combined ---');
+    console.log(combined);
+  }
+
+  const totalForbidden = allResults.reduce((acc, r) => acc + r.summary.forbiddenHits, 0);
+  if (totalForbidden > 0) {
+    console.error(`\n⚠ ${totalForbidden} prompt(s) hit forbidden phrases across all routes — fix prompt before rolling out.`);
     process.exitCode = 2;
   }
 }

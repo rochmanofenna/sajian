@@ -1,0 +1,108 @@
+name: ai-eval
+
+# Runs the AI-route eval harness against PROD on every PR + nightly,
+# covering every route registered in scripts/ai-routes.json. Catches
+# banned-phrase regressions BEFORE they reach owners.
+#
+# WARNING-MODE WINDOW
+# -------------------
+# Until 2026-04-29 (48h grace), this job runs with continue-on-error
+# so eval failures surface as yellow warnings but do not block merge.
+# At 2026-04-29 the user will flip continue-on-error to false and add
+# the eval to the required-checks list in GitHub branch protection.
+#
+# Why warning mode: launch week is mid-flight, eval has never run in
+# CI before, and we'd rather see flake patterns first than block a
+# legitimate fix during incident response. After 48h of clean runs,
+# the gate hardens.
+#
+# Required GitHub secrets:
+#   - ANTHROPIC_API_KEY  : the AI inference key (server reads from env)
+#   - AUTH_COOKIE        : long-lived owner session for the eval tenant
+#                          on prod (e.g. sb-<...>=...; harvest from
+#                          chrome devtools, regenerate every 30 days)
+#   - EVAL_TENANT_ID     : UUID of the eval tenant (separate from real
+#                          customer tenants — codegen flag must be on)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/ai/**'
+      - 'src/app/api/ai/**'
+      - 'src/app/api/admin/ai/**'
+      - 'src/lib/tenant-settings/**'
+      - 'scripts/ai-routes.json'
+      - 'scripts/codegen-eval.mjs'
+      - '.github/workflows/eval.yml'
+  schedule:
+    # Nightly run at 03:00 UTC = 10:00 WIB. Catches drift that's
+    # unrelated to PRs (model updates, prompt changes that slipped
+    # through earlier path filters).
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    # WARNING MODE — flip to false on 2026-04-29.
+    continue-on-error: true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Skip if eval secrets unset
+        id: gate
+        run: |
+          if [ -z "${{ secrets.AUTH_COOKIE }}" ] || [ -z "${{ secrets.EVAL_TENANT_ID }}" ]; then
+            echo "secrets unset — skipping eval (still in warning mode, this is expected during initial rollout)"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run eval against prod (--all routes)
+        if: steps.gate.outputs.skipped == 'false'
+        env:
+          BASE_URL: https://sajian.app
+          AUTH_COOKIE: ${{ secrets.AUTH_COOKIE }}
+          TENANT_ID: ${{ secrets.EVAL_TENANT_ID }}
+        run: node scripts/codegen-eval.mjs --all
+
+      - name: Upload scorecards
+        if: steps.gate.outputs.skipped == 'false' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-scorecards
+          path: docs/CODEGEN_EVAL_RESULTS*.md
+          retention-days: 14
+
+      - name: Summarize on PR
+        if: steps.gate.outputs.skipped == 'false' && github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## AI eval scorecard\n\n';
+            try {
+              body += fs.readFileSync('docs/CODEGEN_EVAL_RESULTS.md', 'utf8');
+            } catch {
+              body += '_eval did not write scorecard — check job logs_';
+            }
+            body += '\n\n_Warning mode until 2026-04-29; failures will not block merge._';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

@@ -1,0 +1,136 @@
+{
+  "$schema": "./ai-routes.schema.json",
+  "description": "Registry of AI routes the eval harness covers. Adding a new AI route to the app means adding an entry here AND ensuring the route uses buildSystemPrompt() from src/lib/ai/system-prompt.ts. CI runs --all against this list — drift is caught the next time eval runs.",
+  "routes": {
+    "setup": {
+      "endpoint": "/api/ai/chat",
+      "kind": "setup",
+      "description": "Onboarding + re-setup chat. Operates on an in-memory draft, writes nothing until ready_to_launch fires.",
+      "request_shape": {
+        "messages": "Array<{role,content}>",
+        "draft": "TenantDraft"
+      },
+      "default_draft": {
+        "name": "Eval Tenant",
+        "colors": {
+          "primary": "#1B5E3B",
+          "accent": "#C9A84C",
+          "background": "#FDF6EC",
+          "dark": "#1A1A18"
+        }
+      },
+      "prompt_sets": ["spatial", "settings", "codegen", "roadmap", "fauzan_regression"]
+    },
+    "admin": {
+      "endpoint": "/api/admin/ai/chat",
+      "kind": "admin",
+      "description": "Live management chat. Operates on the resolved tenant; reads + emits actions against real menu/category IDs.",
+      "request_shape": {
+        "messages": "Array<{role,content}>",
+        "recent_action_results": "PriorActionResult[] (optional)"
+      },
+      "prompt_sets": ["fauzan_regression", "admin_specific"]
+    }
+  },
+  "prompt_sets": {
+    "spatial": {
+      "description": "Position/layout/alignment prompts that historically deflected to template excuses.",
+      "prompts": [
+        "tambahkan tombol floating di pojok kanan bawah",
+        "buat hero dengan countdown promo lebaran sampai 10 april",
+        "animasi fade in pas section about muncul",
+        "tambahkan badge \"BARU\" di foto menu pertama",
+        "promo 20% diskon yang nongol jam 5-9 malam",
+        "testimoni pelanggan dengan foto profil bulat",
+        "logo toko muter pelan di hero",
+        "banner pengumuman di atas, warnanya merah muda",
+        "section jadwal operasional dengan jam buka tutup",
+        "tombol whatsapp yang melayang di kanan bawah",
+        "countdown ke tanggal 1 mei dengan gambar latar",
+        "tambahin section testimoni 3 orang",
+        "galeri foto menu dengan klik untuk zoom",
+        "hero bergaya minimalis tanpa gambar",
+        "promo floating yang bisa ditutup",
+        "tambah section lokasi dengan peta",
+        "tombol pesan yang lebih besar dan di tengah",
+        "hide section about sementara",
+        "ganti warna primer jadi biru laut",
+        "hero dengan video latar kalau ada, kalau nggak pakai gambar",
+        "pindahkan logo dan nama toko ke pojok kiri atas",
+        "taruh tombol pesan di tengah halaman",
+        "logo melayang di pojok kanan atas",
+        "overlay teks \"Selamat Datang\" di atas foto hero",
+        "tombol whatsapp floating di kanan bawah, jangan ketutup tombol pesan",
+        "pindahkan foto about ke kiri, teksnya ke kanan",
+        "badge BARU di pojok kanan atas hero",
+        "tombol pesan agak turun dikit, jangan tabrakan dengan headline",
+        "logo, nama, tagline semua di tengah, ditumpuk vertikal",
+        "taruh banner promo paling atas, di atas hero"
+      ]
+    },
+    "settings": {
+      "description": "Tenant-setting changes that historically deflected to 'tim teknis' / 'level platform'.",
+      "prompts": [
+        "hilangkan pilih cabang langsung tampilkan menu",
+        "matikan multi branch, aku cuma punya 1 cabang",
+        "tambahkan cabang Sudirman, Jl Sudirman no 1, 0812345",
+        "ganti font ke Poppins",
+        "ganti heading ke Futura body ke Inter",
+        "kombinasi Fraunces dengan Plus Jakarta Sans untuk heading dan body",
+        "set favicon ke logo baru ini",
+        "set pajak 11% dan service charge 5%",
+        "tambahkan zone delivery Bintaro radius 3km ongkir 8rb",
+        "aktifkan QRIS dan VA BCA",
+        "hubungkan domain custom satetaichanuda.com",
+        "set ig dan tiktok kita @satetaichanuda"
+      ]
+    },
+    "codegen": {
+      "description": "Custom-section prompts that must reach for add_custom_section instead of refusing.",
+      "prompts": [
+        "tambahkan section article dalam bentuk post card dengan foto",
+        "pindahkan section testimoni ke paling bawah di atas kontak",
+        "buat section newsletter signup dengan input email",
+        "tambahkan section FAQ dengan accordion",
+        "tambahkan section pricing 3 paket",
+        "tambahkan section timeline perjalanan toko",
+        "tambahkan section comparison sebelum/sesudah",
+        "pindahkan testimoni ke paling bawah di atas kontak",
+        "tukar promo dan testimoni",
+        "hapus section gallery",
+        "balik urutan semua section"
+      ]
+    },
+    "roadmap": {
+      "description": "Genuinely missing features — must call log_roadmap_request AND include bridging phrase + concrete workaround.",
+      "must_call": "log_roadmap_request",
+      "must_include_bridge": ["kamu bisa", "sementara", "sambil nunggu", "untuk sekarang"],
+      "prompts": [
+        "tambahkan menu additional yang muncul saat pesan menu utama",
+        "buat sistem loyalty point member",
+        "fitur reservasi meja online untuk customer",
+        "subscription kopi bulanan, pelanggan langganan otomatis"
+      ]
+    },
+    "fauzan_regression": {
+      "description": "The exact 5 prompts that leaked banned phrases to Fauzan on the ADMIN surface (2026-04-26). These prompts must pass on EVERY route — they are the canary for any future route divergence.",
+      "prompts": [
+        "atur posisi section: hero, promo, featured, about, location, testimonials, contact",
+        "ganti font heading ke Poppins, body ke Inter",
+        "tambahkan menu additional yang muncul saat pesan untuk upselling",
+        "tambahkan sistem membership",
+        "tambahkan input voucher code di halaman pembayaran"
+      ]
+    },
+    "admin_specific": {
+      "description": "Live-admin specific operations that don't apply to setup (by-id menu mutations, etc.).",
+      "prompts": [
+        "matikan multi branch",
+        "ganti tagline jadi: Kopi & sandwich Bintaro",
+        "ganti warna primer jadi biru laut",
+        "set jam buka senin 10 pagi sampe 10 malam",
+        "ganti layout kayak warung"
+      ]
+    }
+  }
+}
