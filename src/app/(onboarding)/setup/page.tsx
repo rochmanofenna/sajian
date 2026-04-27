@@ -171,6 +171,14 @@ export default function SetupPage() {
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [previewIframeOrigin, setPreviewIframeOrigin] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Tenant-existence gate. The AI auto-derives a slug as soon as the
+  // owner names the restaurant (ChatPanel update_name handler), so
+  // draft.slug becomes truthy long before there's a tenants row. If
+  // we render the iframe at that point, the storefront subdomain
+  // falls through to the Sajian marketing page (no tenant resolved
+  // → MarketingHome) and the preview looks broken. Stay null until
+  // /api/onboarding/preview-token confirms the row exists; then flip.
+  const [tenantExists, setTenantExists] = useState(false);
 
   const obtainPreviewUrl = useCallback(async () => {
     if (!draft?.slug) return;
@@ -184,6 +192,7 @@ export default function SetupPage() {
       if (!res.ok) throw new Error(body?.error ?? 'Gagal membuat preview token');
       const url = body.preview_url as string;
       setPreviewSrc(url);
+      setTenantExists(Boolean(body.tenant_exists));
       try {
         setPreviewIframeOrigin(new URL(url).origin);
       } catch {
@@ -332,7 +341,7 @@ export default function SetupPage() {
           {launchError && (
             <div className="ob-device__error">{launchError}</div>
           )}
-          {previewSrc && (
+          {previewSrc && tenantExists && (
             <iframe
               ref={iframeRef}
               src={previewSrc}
@@ -360,6 +369,16 @@ export default function SetupPage() {
             <div className="ob-device__empty">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               <span>Menyiapkan preview…</span>
+            </div>
+          )}
+          {previewSrc && !tenantExists && !previewError && (
+            <div className="ob-device__empty">
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              <span>
+                Preview siap setelah kamu klik LAUNCH di pojok kanan
+                atas. Sementara, ngobrol dulu sama aku aja — aku catat
+                semuanya ke draft.
+              </span>
             </div>
           )}
           {previewError && (

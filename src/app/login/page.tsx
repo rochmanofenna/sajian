@@ -17,6 +17,7 @@ import {
   normalizeIdPhone,
 } from '@/lib/auth/phone';
 import { mapAuthError, isMethodUnavailable, type AuthMethod } from '@/lib/auth/error-map';
+import { OTP_LENGTH } from '@/lib/auth/otp';
 
 type Stage = 'checking' | 'identify' | 'otp' | 'redirecting';
 
@@ -165,7 +166,7 @@ export default function LoginPage() {
             <span className="auth__kicker">Sajian · masuk akun</span>
             <h1 className="auth__title">Masuk ke toko kamu.</h1>
             <p className="auth__sub">
-              Kode 6 digit akan dikirim ke{' '}
+              Kode {OTP_LENGTH} digit akan dikirim ke{' '}
               {method === 'email' ? 'email kamu' : 'nomor HP via SMS'}. Kode cuma berlaku 10 menit.
             </p>
           </header>
@@ -243,13 +244,13 @@ export default function LoginPage() {
                     pattern="[0-9]*"
                     required
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    placeholder="123 456"
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH))}
+                    placeholder="12345678"
                     className="auth__input auth__input--otp"
                   />
                 </div>
               </label>
-              <button type="submit" disabled={loading || otp.length < 6} className="auth__submit">
+              <button type="submit" disabled={loading || otp.length < OTP_LENGTH} className="auth__submit">
                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                 Masuk
               </button>

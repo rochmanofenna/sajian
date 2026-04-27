@@ -115,6 +115,13 @@ export async function POST(req: Request) {
       token,
       expires_at: expiresAt,
       preview_url: tenantPreviewUrl(slug, draftId, token),
+      // Gate the /setup iframe rendering. When the tenant row doesn't
+      // exist yet (fresh onboarding, slug auto-derived from name but
+      // not launched), the storefront subdomain falls through to the
+      // marketing landing page — embedding that in the iframe makes
+      // the preview look broken. Client uses this flag to swap the
+      // iframe for a "preview after launch" empty state.
+      tenant_exists: Boolean(tenant),
     });
   } catch (err) {
     return errorResponse(err);
