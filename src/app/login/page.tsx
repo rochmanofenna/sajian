@@ -43,12 +43,12 @@ export default function LoginPage() {
       }
       setHint('Sudah masuk — membuka dashboard…');
       setStage('redirecting');
-      await routeToOwnerAdmin(user.id);
+      await routeToOwnerAdmin(user.id, user.email ?? user.phone ?? '');
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function routeToOwnerAdmin(userId: string) {
+  async function routeToOwnerAdmin(userId: string, identityLabel: string) {
     const host = window.location.host;
     const subLabel = host.split(':')[0].split('.')[0];
     const isApex = subLabel === 'sajian' || subLabel === 'www' || subLabel === 'localhost';
@@ -75,8 +75,17 @@ export default function LoginPage() {
 
     const slug = owned?.[0]?.slug;
     if (!slug) {
+      // Echo the email/phone in the error so a typo'd login (e.g.
+      // rrochmanofenna@gmail.com vs rochmanofenna@gmail.com — the
+      // exact symptom that triggered a false race-condition bug
+      // report on 2026-04-28) is immediately visible to the owner.
+      // Stock "Akun ini belum punya toko" reads as a system error;
+      // spelling the identity back lets the owner spot the typo.
       setStage('identify');
-      setError('Akun ini belum punya toko. Buat toko dulu di /signup.');
+      const labelHint = identityLabel ? ` (${identityLabel})` : '';
+      setError(
+        `Akun${labelHint} belum punya toko. Cek email/nomor di atas — atau buat toko baru di /signup.`,
+      );
       return;
     }
     if (host.includes('localhost')) {
@@ -149,7 +158,10 @@ export default function LoginPage() {
     }
     setStage('redirecting');
     setHint('Mencari toko kamu…');
-    await routeToOwnerAdmin(data.user.id);
+    await routeToOwnerAdmin(
+      data.user.id,
+      data.user.email ?? data.user.phone ?? identifier.trim(),
+    );
   }
 
   const sentTo = method === 'email' ? identifier.trim().toLowerCase() : phoneDisplay || normalizedPhone;
