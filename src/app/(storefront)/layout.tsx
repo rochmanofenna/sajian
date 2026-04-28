@@ -4,7 +4,7 @@
 // tenant exists but is deactivated, shows an offline notice instead.
 
 import Link from 'next/link';
-import { getPublicTenantAnyStatus } from '@/lib/tenant';
+import { getPublicTenantAnyStatus, getTenantSlug } from '@/lib/tenant';
 import { StoreHeader } from '@/components/storefront/StoreHeader';
 import { StoreFooter } from '@/components/storefront/StoreFooter';
 import { PreviewModeBanner } from '@/components/storefront/PreviewModeBanner';
@@ -14,6 +14,36 @@ export default async function StorefrontLayout({ children }: { children: React.R
   const tenant = await getPublicTenantAnyStatus();
 
   if (!tenant) {
+    // Owner clicked into /menu / /cart / /checkout / /akun from a
+    // pre-launch preview iframe. The home (`/`) path renders the
+    // draft via DraftStorefront, but sub-routes need menu_items +
+    // tenant context that don't exist yet. Detect the
+    // valid-preview-but-no-tenant case so the owner sees a friendly
+    // "back to chat" instead of the generic "subdomain not found"
+    // 404 copy.
+    const slug = await getTenantSlug();
+    const preview = slug ? await getPreviewMode({ slug }) : null;
+    if (preview) {
+      return (
+        <main className="flex-1 flex items-center justify-center px-6 py-24 bg-white">
+          <div className="max-w-md text-center space-y-4">
+            <h1 className="text-2xl font-semibold text-zinc-900">
+              Halaman ini aktif setelah kamu launch toko
+            </h1>
+            <p className="text-zinc-600">
+              Sementara, balik ke chat dulu ya — preview home page tetap update
+              tiap kamu ngobrol.
+            </p>
+            <Link
+              href="https://sajian.app/setup"
+              className="inline-block text-sm underline text-zinc-700"
+            >
+              Balik ke /setup →
+            </Link>
+          </div>
+        </main>
+      );
+    }
     return (
       <main className="flex-1 flex items-center justify-center px-6 py-24 bg-white">
         <div className="max-w-md text-center space-y-4">

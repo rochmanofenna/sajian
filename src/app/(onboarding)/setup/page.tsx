@@ -171,14 +171,6 @@ export default function SetupPage() {
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [previewIframeOrigin, setPreviewIframeOrigin] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  // Tenant-existence gate. The AI auto-derives a slug as soon as the
-  // owner names the restaurant (ChatPanel update_name handler), so
-  // draft.slug becomes truthy long before there's a tenants row. If
-  // we render the iframe at that point, the storefront subdomain
-  // falls through to the Sajian marketing page (no tenant resolved
-  // → MarketingHome) and the preview looks broken. Stay null until
-  // /api/onboarding/preview-token confirms the row exists; then flip.
-  const [tenantExists, setTenantExists] = useState(false);
 
   const obtainPreviewUrl = useCallback(async () => {
     if (!draft?.slug) return;
@@ -192,7 +184,6 @@ export default function SetupPage() {
       if (!res.ok) throw new Error(body?.error ?? 'Gagal membuat preview token');
       const url = body.preview_url as string;
       setPreviewSrc(url);
-      setTenantExists(Boolean(body.tenant_exists));
       try {
         setPreviewIframeOrigin(new URL(url).origin);
       } catch {
@@ -341,7 +332,7 @@ export default function SetupPage() {
           {launchError && (
             <div className="ob-device__error">{launchError}</div>
           )}
-          {previewSrc && tenantExists && (
+          {previewSrc && (
             <iframe
               ref={iframeRef}
               src={previewSrc}
@@ -353,6 +344,16 @@ export default function SetupPage() {
               // `sandbox` attribute and the iframe needs its own
               // cookies (preview-token cookie + cart cookie) for
               // navigation to keep state, which sandbox would block.
+              //
+              // No tenantExists gate. The storefront's `/` route
+              // (app/page.tsx) now renders <DraftStorefront> when
+              // the preview cookie scopes to an unlaunched slug —
+              // the iframe shows the in-progress draft live, with
+              // every chat-turn re-render landing via
+              // PreviewLiveReloadClient + the postMessage debounce
+              // below. Owners watch their storefront fill in
+              // element-by-element instead of staring at a "click
+              // LAUNCH" placeholder.
               referrerPolicy="no-referrer"
             />
           )}
@@ -360,8 +361,7 @@ export default function SetupPage() {
             <div className="ob-device__empty">
               <Sparkles className="h-4 w-4" aria-hidden="true" />
               <span>
-                Preview muncul setelah kamu kasih nama toko di chat —
-                slug-nya bakal jadi alamat preview-nya.
+                Preview-nya bakal jalan begitu kamu mulai ngobrol sama aku.
               </span>
             </div>
           )}
@@ -369,16 +369,6 @@ export default function SetupPage() {
             <div className="ob-device__empty">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               <span>Menyiapkan preview…</span>
-            </div>
-          )}
-          {previewSrc && !tenantExists && !previewError && (
-            <div className="ob-device__empty">
-              <Sparkles className="h-4 w-4" aria-hidden="true" />
-              <span>
-                Preview siap setelah kamu klik LAUNCH di pojok kanan
-                atas. Sementara, ngobrol dulu sama aku aja — aku catat
-                semuanya ke draft.
-              </span>
             </div>
           )}
           {previewError && (
