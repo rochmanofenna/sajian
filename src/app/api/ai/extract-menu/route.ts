@@ -21,7 +21,13 @@ import { identityKey } from '@/lib/api/auth';
 import { getOwnerOrNull } from '@/lib/admin/auth';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// Bumped 60s → 300s on 2026-04-28 after Vercel function timeout
+// hit on Mindiology's 20-page PDF. Worst-case wall-clock with
+// PARALLEL_CAP=6: ~4 batches × 35s per-block timeout = 140s.
+// Average ~10s/page = ~40s. 300s gives us 2× headroom on the
+// worst-case path. Vercel Pro caps at 300s; do not bump higher
+// without changing plan tier.
+export const maxDuration = 300;
 
 interface ExtractedItem {
   name: string;
@@ -46,14 +52,21 @@ const PDF_MAX = 32 * 1024 * 1024;
 
 const MAX_LONGEST_SIDE = 1600;
 const JPEG_QUALITY = 72;
-// Per-page Anthropic vision call timeout. Bumped 22s → 35s on 2026-04-27
-// after diagnosing Fauzan's "Gagal baca menu" failures: the previous
-// 22s budget was tight for image-heavy / scanned-image PDF pages where
-// Claude vision needs longer to OCR. Bounded by Vercel's
-// `maxDuration = 60` so even a worst-case page can't blow the function.
+// Per-page Anthropic vision call timeout. 35s post-2026-04-27 (was 22s)
+// gives image-heavy / scanned PDF pages enough headroom to OCR.
+// Bounded by maxDuration above.
 const PER_BLOCK_TIMEOUT_MS = 35_000;
-const PER_BLOCK_MAX_TOKENS = 3_500;
-const PARALLEL_CAP = 3;
+// 8000 (was 3500) — the previous cap was tight for dense menu pages
+// where dozens of items + descriptions push past 3500 output tokens
+// and the model truncates mid-JSON. Bumping doesn't increase cost
+// (only billed for tokens actually used); it just removes a silent
+// truncation failure mode.
+const PER_BLOCK_MAX_TOKENS = 8_000;
+// 6 (was 3) — halves the number of serial batches for a 20-page PDF
+// (4 batches at cap=6 vs 7 at cap=3), bringing wall-clock comfortably
+// inside the 300s function budget. Tier-3 Anthropic limits handle
+// 6 concurrent vision calls without rate-limiting.
+const PARALLEL_CAP = 6;
 const MAX_PAGES_PER_PDF = 30;
 
 function jsonError(message: string, status: number, extra: Record<string, unknown> = {}) {
