@@ -44,10 +44,25 @@ export function DraftStorefront(props: {
   // FeaturedItems shows an empty grid, Hero shows the Lockup with
   // whatever name + logo are present). Each chat turn fills in
   // more without changing the page structure.
-  const sections =
+  const rawSections =
     props.draft.sections && props.draft.sections.length > 0
       ? props.draft.sections
       : defaultSections();
+
+  // Suppress every section's CTA in unlaunched-preview mode. Without
+  // this, clicking "Lihat Menu" / "Pesan Sekarang" / etc. inside the
+  // /setup preview iframe navigates the iframe to <slug>.sajian.app/menu
+  // (or /cart / /checkout), which renders the (storefront)/layout
+  // friendly fallback ("Halaman ini aktif setelah kamu launch toko").
+  // The fallback's link to apex /setup escapes via target="_top", but
+  // the better UX is to never let the owner click into a placeholder
+  // page in the first place. Once the tenant launches, StorefrontHome
+  // takes over (this component is never reached for launched tenants),
+  // and CTAs reappear with their original cta_visible state.
+  const sections = rawSections.map((s) => ({
+    ...s,
+    props: { ...(s.props ?? {}), cta_visible: false },
+  }));
 
   return (
     <div

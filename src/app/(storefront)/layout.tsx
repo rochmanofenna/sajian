@@ -4,6 +4,14 @@
 // tenant exists but is deactivated, shows an offline notice instead.
 
 import Link from 'next/link';
+// next/link is intentionally NOT used for the fallback's "Balik ke
+// /setup" CTA below — the storefront subdomain's friendly fallback
+// renders inside the /setup preview iframe, and Link navigates the
+// current browsing context (= the iframe). That would load
+// sajian.app/setup INSIDE the iframe, causing the recursion bug
+// observed 2026-05-03 (chat UI rendered inside its own preview tab).
+// Use a raw <a target="_top"> so the click escapes the iframe and
+// reloads the parent — a no-op refresh of the page they're already on.
 import { getPublicTenantAnyStatus, getTenantSlug } from '@/lib/tenant';
 import { StoreHeader } from '@/components/storefront/StoreHeader';
 import { StoreFooter } from '@/components/storefront/StoreFooter';
@@ -34,12 +42,14 @@ export default async function StorefrontLayout({ children }: { children: React.R
               Sementara, balik ke chat dulu ya — preview home page tetap update
               tiap kamu ngobrol.
             </p>
-            <Link
+            <a
               href="https://sajian.app/setup"
+              target="_top"
+              rel="noopener"
               className="inline-block text-sm underline text-zinc-700"
             >
               Balik ke /setup →
-            </Link>
+            </a>
           </div>
         </main>
       );
