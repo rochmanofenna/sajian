@@ -27,6 +27,7 @@ import { buildSectionContextFromDraft } from '@/lib/storefront/fetch';
 import { StoreFooter } from './StoreFooter';
 import { StorefrontRendererServer } from './StorefrontRenderer.server';
 import { PreviewModeBanner } from './PreviewModeBanner';
+import { DraftMenuPreview } from './DraftMenuPreview';
 
 export function DraftStorefront(props: {
   draftOwnerId: string;
@@ -49,19 +50,18 @@ export function DraftStorefront(props: {
       ? props.draft.sections
       : defaultSections();
 
-  // Override every section's cta_href to an in-page anchor that
-  // smooth-scrolls to the menu section ("Lihat Menu" / "Pesan
-  // Sekarang" feel functional without leaving the iframe). Each
-  // section wrapper in StorefrontRendererServer carries
-  // id={`sj-${section.type}`}, so #sj-featured_items targets the
-  // menu cards. If the draft has no featured_items section yet
-  // (rare — defaultSections() includes one), the click is a no-op
-  // hash change. Either way: no navigation, no recursion, no dead-
-  // looking button. Live-launch path is untouched — this component
-  // is never reached for tenants with a real `tenants` row.
+  // Override every section's cta_href to scroll to the FULL menu
+  // section rendered at the bottom of the page (DraftMenuPreview,
+  // id="sj-full-menu"). Owners watching the preview iframe expect
+  // "Lihat Menu" to surface ALL their menu items, not just the 4-item
+  // FeaturedItems highlight. Anchoring to #sj-full-menu jumps to the
+  // complete categorized listing without leaving the iframe.
+  // Live-launch path is untouched — this component is never reached
+  // for tenants with a real `tenants` row, and the live /menu route
+  // takes over there with its own data path.
   const sections = rawSections.map((s) => ({
     ...s,
-    props: { ...(s.props ?? {}), cta_href: '#sj-featured_items' },
+    props: { ...(s.props ?? {}), cta_href: '#sj-full-menu' },
   }));
 
   return (
@@ -72,6 +72,12 @@ export function DraftStorefront(props: {
       <PreviewModeBanner />
       <div className="flex-1">
         <StorefrontRendererServer sections={sections} ctx={ctx} tenantId={tenant.id} />
+        {/* Full menu listing rendered inline — gives "Lihat Menu" CTA
+            (anchored to #sj-full-menu via the section override above)
+            something meaningful to scroll to. Hidden when the draft
+            has no menu items yet; appears as soon as the first item
+            extracts. */}
+        <DraftMenuPreview draft={props.draft} ctx={ctx} />
       </div>
       <StoreFooter tenant={tenant} />
     </div>
