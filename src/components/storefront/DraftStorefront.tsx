@@ -49,19 +49,23 @@ export function DraftStorefront(props: {
       ? props.draft.sections
       : defaultSections();
 
-  // Suppress every section's CTA in unlaunched-preview mode. Without
-  // this, clicking "Lihat Menu" / "Pesan Sekarang" / etc. inside the
-  // /setup preview iframe navigates the iframe to <slug>.sajian.app/menu
-  // (or /cart / /checkout), which renders the (storefront)/layout
-  // friendly fallback ("Halaman ini aktif setelah kamu launch toko").
-  // The fallback's link to apex /setup escapes via target="_top", but
-  // the better UX is to never let the owner click into a placeholder
-  // page in the first place. Once the tenant launches, StorefrontHome
-  // takes over (this component is never reached for launched tenants),
-  // and CTAs reappear with their original cta_visible state.
+  // Render every section's CTA with its full visual treatment but
+  // make it behaviorally inert. The owner needs to see the storefront
+  // EXACTLY the way their customers will see it — that's the entire
+  // demo-magic premise — so hiding "Lihat Menu" / "Pesan Sekarang" /
+  // etc. (the previous fix) was wrong. The actual problem was that
+  // those CTAs navigated the iframe into a non-existent route on an
+  // unlaunched subdomain, recursing back through /setup. Solution:
+  // keep cta_visible as the draft set it, but override cta_href to
+  // an in-page anchor (#preview-noop) that doesn't navigate. Section
+  // components render <a href="#preview-noop">, click triggers an
+  // empty hash change (no element matches, no scroll, no recursion).
+  // Live-launch path is untouched: this component is never reached
+  // for tenants with a real `tenants` row — StorefrontHome takes over
+  // there, and CTAs render with their original hrefs.
   const sections = rawSections.map((s) => ({
     ...s,
-    props: { ...(s.props ?? {}), cta_visible: false },
+    props: { ...(s.props ?? {}), cta_href: '#preview-noop' },
   }));
 
   return (
