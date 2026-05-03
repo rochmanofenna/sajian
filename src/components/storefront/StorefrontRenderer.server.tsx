@@ -41,6 +41,13 @@ export function StorefrontRendererServer({ sections, ctx, tenantId }: Props) {
         return (
           <div
             key={`${section.id}:${section.variant}`}
+            // Stable per-type anchor so in-page links (e.g. the
+            // preview-mode "Lihat Menu" CTA, which can't navigate to
+            // a real /menu route on an unlaunched subdomain without
+            // recursing through the friendly fallback) can scroll
+            // to a meaningful section without leaving the page. Type
+            // is unique per section catalog and stable across renders.
+            id={`sj-${section.type}`}
             className="sj-section-slot"
             style={{ animationDelay: `${Math.min(i * 80, 360)}ms` }}
           >

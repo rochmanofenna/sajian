@@ -49,23 +49,19 @@ export function DraftStorefront(props: {
       ? props.draft.sections
       : defaultSections();
 
-  // Render every section's CTA with its full visual treatment but
-  // make it behaviorally inert. The owner needs to see the storefront
-  // EXACTLY the way their customers will see it — that's the entire
-  // demo-magic premise — so hiding "Lihat Menu" / "Pesan Sekarang" /
-  // etc. (the previous fix) was wrong. The actual problem was that
-  // those CTAs navigated the iframe into a non-existent route on an
-  // unlaunched subdomain, recursing back through /setup. Solution:
-  // keep cta_visible as the draft set it, but override cta_href to
-  // an in-page anchor (#preview-noop) that doesn't navigate. Section
-  // components render <a href="#preview-noop">, click triggers an
-  // empty hash change (no element matches, no scroll, no recursion).
-  // Live-launch path is untouched: this component is never reached
-  // for tenants with a real `tenants` row — StorefrontHome takes over
-  // there, and CTAs render with their original hrefs.
+  // Override every section's cta_href to an in-page anchor that
+  // smooth-scrolls to the menu section ("Lihat Menu" / "Pesan
+  // Sekarang" feel functional without leaving the iframe). Each
+  // section wrapper in StorefrontRendererServer carries
+  // id={`sj-${section.type}`}, so #sj-featured_items targets the
+  // menu cards. If the draft has no featured_items section yet
+  // (rare — defaultSections() includes one), the click is a no-op
+  // hash change. Either way: no navigation, no recursion, no dead-
+  // looking button. Live-launch path is untouched — this component
+  // is never reached for tenants with a real `tenants` row.
   const sections = rawSections.map((s) => ({
     ...s,
-    props: { ...(s.props ?? {}), cta_href: '#preview-noop' },
+    props: { ...(s.props ?? {}), cta_href: '#sj-featured_items' },
   }));
 
   return (
